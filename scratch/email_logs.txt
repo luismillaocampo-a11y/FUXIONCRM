@@ -1,0 +1,116 @@
+
+========================================
+TIMESTAMP: 2026-06-18T20:09:25.473Z
+TO: admin@nutraflowcrm.com
+FROM: alerts@nutraflowcrm.com (SIMULATED)
+SUBJECT: 🚨 KNOWLEDGE GAP DETECTED: Chat paused for Juan Perez
+----------------------------------------
+BODY:
+
+Dear Admin,
+
+A customer asked a question that the AI bot could not answer based on the knowledge base.
+The bot has been PAUSED (Shadow Mode active) for this customer.
+
+Lead Details:
+- Name: Juan Perez
+- Phone: +51987654321
+
+Unanswered Question:
+"Do you sell chocolate ice cream?"
+
+Action Required:
+Go to the CRM Dashboard under "Knowledge Gaps", provide the answer, and reactivate the bot.
+
+Best regards,
+NutraFlow Automation Bot
+
+========================================
+
+
+========================================
+TIMESTAMP: 2026-06-18T20:14:01.956Z
+TO: admin@nutraflowcrm.com
+FROM: alerts@nutraflowcrm.com (SIMULATED)
+SUBJECT: 🚨 KNOWLEDGE GAP DETECTED: Chat paused for Juan Perez
+----------------------------------------
+BODY:
+
+Dear Admin,
+
+A customer asked a question that the AI bot could not answer based on the knowledge base.
+The bot has been PAUSED (Shadow Mode active) for this customer.
+
+Lead Details:
+- Name: Juan Perez
+- Phone: +51987654321
+
+Unanswered Question:
+"Do you sell chocolate ice cream?"
+
+Action Required:
+Go to the CRM Dashboard under "Knowledge Gaps", provide the answer, and reactivate the bot.
+
+Best regards,
+NutraFlow Automation Bot
+
+========================================
+
+
+========================================
+TIMESTAMP: 2026-06-18T20:37:10.722Z
+TO: admin@nutraflowcrm.com
+FROM: alerts@nutraflowcrm.com (SIMULATED)
+SUBJECT: 🚨 KNOWLEDGE GAP DETECTED: Chat paused for Juan Perez
+----------------------------------------
+BODY:
+
+Dear Admin,
+
+A customer asked a question that the AI bot could not answer based on the knowledge base.
+The bot has been PAUSED (Shadow Mode active) for this customer.
+
+Lead Details:
+- Name: Juan Perez
+- Phone: +51987654321
+
+Unanswered Question:
+"Do you sell chocolate ice cream?"
+
+Action Required:
+Go to the CRM Dashboard under "Knowledge Gaps", provide the answer, and reactivate the bot.
+
+Best regards,
+NutraFlow Automation Bot
+
+========================================
+
+
+========================================
+TIMESTAMP: 2026-06-18T20:37:53.505Z
+TO: admin@nutraflowcrm.com
+FROM: alerts@nutraflowcrm.com (SIMULATED)
+SUBJECT: 🚨 KNOWLEDGE GAP DETECTED: Chat paused for Juan Perez
+----------------------------------------
+BODY:
+
+Dear Admin,
+
+A customer asked a question that the AI bot could not answer based on the knowledge base.
+The bot has been PAUSED (Shadow Mode active) for this customer.
+
+Lead Details:
+- Name: Juan Perez
+- Phone: +51987654321
+
+Unanswered Question:
+"Do you deliver to Lima?"
+
+Action Required:
+Go to the CRM Dashboard under "Knowledge Gaps", provide the answer, and reactivate the bot.
+
+Best regards,
+NutraFlow Automation Bot
+
+========================================
+
