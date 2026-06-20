@@ -111,27 +111,24 @@ export default function CRMDashboard() {
     const channel = supabase
       .channel(`chat_messages_lead_${leadId}`)
       .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'chat_messages',
-        filter: `lead_id=eq.${leadId}`
-      },
-      (payload) => {
-        const newMessage = payload.new;
-        if (!newMessage) return;
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `lead_id=eq.${leadId}`
+        },
+        (payload) => {
+          const newMessage = payload.new;
+          setChatMessages((prev) => [...prev, newMessage]);
+        }
+      )
+      .subscribe();
 
-        setChatMessages((prev) => {
-          if (prev.some((msg) => msg.id === newMessage.id)) return prev;
-          
-          if (newMessage.sender !== 'agent') {
-            setNewMessageAlert(true);
-          }
-          
-          return [...prev, newMessage];
-        });
-      }
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedLead?.id]);
             }
       )
       .subscribe();
