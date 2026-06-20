@@ -2,12 +2,18 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { createClient } from '@supabase/supabase-js';
 import { 
   Search, Plus, X, Send, User, Bot, MessageSquare, 
   Trash2, Upload, FileText, Image, Video, HelpCircle, 
   AlertCircle, CheckCircle2, UserCheck, ToggleLeft, ToggleRight,
   RefreshCw, FileCode, Check, Clock
 } from 'lucide-react';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
 
 export default function CRMDashboard() {
   // Pestaña Activa
@@ -93,6 +99,35 @@ export default function CRMDashboard() {
     } else {
       setChatMessages([]);
     }
+  }, [selectedLead]);
+
+  useEffect(() => {
+    if (!selectedLead) return;
+
+    const channel = supabase
+      .channel(`chat_messages_lead_${selectedLead.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `lead_id=eq.${selectedLead.id}`
+        },
+        (payload) => {
+          const newMessage = payload.new;
+          if (!newMessage) return;
+          setChatMessages((prev) => {
+            if (prev.some((msg) => msg.id === newMessage.id)) return prev;
+            return [...prev, newMessage];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [selectedLead]);
 
   const fetchMessages = async (leadId: string) => {
@@ -184,6 +219,35 @@ export default function CRMDashboard() {
     } catch (err) {
       console.error('Error al eliminar chat:', err);
       setChatNotice('No se pudo eliminar el chat. Intenta de nuevo.');
+      window.setTimeout(() => setChatNotice(null), 5000);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleDeleteLead = async () => {
+    if (!selectedLead) return;
+    if (!confirm('¿Estás seguro de que deseas eliminar este cliente y todo su historial de chat?')) return;
+
+    try {
+      setChatLoading(true);
+      const res = await fetch(`/api/leads?leadId=${encodeURIComponent(selectedLead.id)}`, {
+        method: 'DELETE'
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to delete lead');
+      }
+
+      setSelectedLead(null);
+      setChatMessages([]);
+      setChatNotice('Cliente eliminado junto con su historial de chat.');
+      window.setTimeout(() => setChatNotice(null), 5000);
+      fetchData();
+    } catch (err) {
+      console.error('Error al eliminar cliente:', err);
+      setChatNotice('No se pudo eliminar el cliente. Intenta de nuevo.');
       window.setTimeout(() => setChatNotice(null), 5000);
     } finally {
       setChatLoading(false);
@@ -800,6 +864,12 @@ export default function CRMDashboard() {
                 className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest rounded-lg bg-red-500/10 text-red-300 border border-red-500/20 hover:bg-red-500/15 transition"
               >
                 Eliminar chat
+              </button>
+              <button
+                onClick={handleDeleteLead}
+                className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest rounded-lg bg-red-500/10 text-red-100 border border-red-500/20 hover:bg-red-500/20 transition"
+              >
+                Eliminar cliente
               </button>
               <button 
                 onClick={() => setSelectedLead(null)}

@@ -672,6 +672,24 @@ export const db = {
     }
   },
 
+  async deleteLead(leadId: string): Promise<void> {
+    if (!leadId) {
+      throw new Error('Missing leadId');
+    }
+
+    if (useSupabase) {
+      const { error: msgError } = await getSupabase().from('chat_messages').delete().eq('lead_id', leadId);
+      if (msgError) throw msgError;
+
+      const { error: leadError } = await getSupabase().from('leads').delete().eq('id', leadId);
+      if (leadError) throw leadError;
+    } else {
+      const db = getSqliteDb();
+      db.prepare('DELETE FROM chat_messages WHERE lead_id = ?').run(leadId);
+      db.prepare('DELETE FROM leads WHERE id = ?').run(leadId);
+    }
+  },
+
   getWhatsappSession(sessionId: string = 'default'): Promise<any> {
     return getWhatsappSession(sessionId);
   },
