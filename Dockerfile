@@ -1,25 +1,27 @@
-# Multi-stage Dockerfile for Next.js production
-FROM node:20-alpine AS deps
-WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci --production
+# Usamos una imagen de Node.js oficial (basada en Debian)
+FROM node:20
 
-FROM node:20-alpine AS builder
+# 1. Instalamos las herramientas necesarias para compilar librerías nativas
+# Esto es CRUCIAL para better-sqlite3
+RUN apt-get update && apt-get install -y python3 make g++
+
+# Directorio de trabajo
 WORKDIR /app
+
+# Copiamos archivos de dependencias
+COPY package*.json ./
+
+# Instalamos dependencias
+RUN npm install
+
+# Copiamos el resto del código
 COPY . .
-RUN npm ci
+
+# Compilamos la aplicación
 RUN npm run build
 
-FROM node:20-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-# Copy built app and production deps
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=builder /app/next.config.ts ./next.config.ts
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
-
+# Exponemos el puerto
 EXPOSE 3000
+
+# Comando de inicio
 CMD ["npm", "start"]
