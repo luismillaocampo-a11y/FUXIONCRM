@@ -108,44 +108,96 @@ export default function CRMDashboard() {
     const leadId = selectedLead?.id;
     if (!leadId) return;
 
-    console.log('🔴 Conectando a canal Supabase para leadId:', leadId);
+    console.log('🔴 Iniciando suscripción para leadId:', leadId);
+    console.log('📊 URL Supabase:', process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Configurada' : '❌ NO configurada');
+    console.log('🔑 Key Supabase:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Configurada' : '❌ NO configurada');
 
-    const channel = supabase
-      .channel(`chat_messages_lead_${leadId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `lead_id=eq.${leadId}`
-        },
-        (payload) => {
-          console.log('📨 Mensaje recibido via Supabase:', payload.new);
-          const newMessage = payload.new;
-          if (!newMessage) return;
+    let pollInterval: NodeJS.Timeout | null = null;
+    let lastMessageCount = chatMessages.length;
 
-          setChatMessages((prev) => {
-            if (prev.find((msg) => msg.id === newMessage.id)) {
-              console.log('⚠️ Mensaje duplicado ignorado:', newMessage.id);
-              return prev;
-            }
-            console.log('✅ Añadiendo nuevo mensaje al estado:', newMessage.message);
-            if (newMessage.sender !== 'agent') {
+    const startPolling = () => {
+      console.log('📡 Iniciando polling cada 3 segundos...');
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
+          const data = await res.json();
+          const messages = Array.isArray(data) ? data : [];
+          
+          if (messages.length > lastMessageCount) {
+            const newMsg = messages[messages.length - 1];
+            console.log('✅ Nuevo mensaje detectado vía polling:', newMsg.message);
+            setChatMessages(messages);
+            lastMessageCount = messages.length;
+            if (newMsg.sender !== 'agent') {
               setNewMessageAlert(true);
             }
-            return [...prev, newMessage];
-          });
+          }
+        } catch (err) {
+          console.error('❌ Error en polling:', err);
         }
-      )
-      .subscribe((status) => {
-        console.log('🔗 Estado de canal Supabase:', status);
-      });
-
-    return () => {
-      console.log('❌ Desconectando canal para leadId:', leadId);
-      supabase.removeChannel(channel);
+      }, 3000);
     };
+
+    // Intentar con Supabase primero
+    try {
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+        console.warn('⚠️ Supabase no configurado, usando polling fallback');
+        startPolling();
+        return () => {
+          if (pollInterval) clearInterval(pollInterval);
+        };
+      }
+
+      const channel = supabase
+        .channel(`chat_messages_lead_${leadId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'chat_messages',
+            filter: `lead_id=eq.${leadId}`
+          },
+          (payload) => {
+            console.log('📨 Mensaje recibido vía Supabase:', payload.new);
+            const newMessage = payload.new;
+            if (!newMessage || newMessage.lead_id !== leadId) return;
+
+            setChatMessages((prev) => {
+              if (prev.find((msg) => msg.id === newMessage.id)) {
+                console.log('⚠️ Mensaje duplicado ignorado:', newMessage.id);
+                return prev;
+              }
+              console.log('✅ Añadiendo nuevo mensaje:', newMessage.message);
+              if (newMessage.sender !== 'agent') {
+                setNewMessageAlert(true);
+              }
+              return [...prev, newMessage];
+            });
+          }
+        )
+        .subscribe((status) => {
+          console.log('🔗 Estado de canal Supabase:', status);
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Suscripción exitosa a Supabase');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.warn('⚠️ Error en canal, iniciando polling...');
+            startPolling();
+          }
+        });
+
+      return () => {
+        console.log('❌ Desconectando canal para leadId:', leadId);
+        supabase.removeChannel(channel);
+        if (pollInterval) clearInterval(pollInterval);
+      };
+    } catch (err) {
+      console.error('❌ Error al conectar Supabase:', err);
+      startPolling();
+      return () => {
+        if (pollInterval) clearInterval(pollInterval);
+      };
+    }
   }, [selectedLead?.id]);
 
   const fetchMessages = async (leadId: string) => {
@@ -222,21 +274,26 @@ export default function CRMDashboard() {
 
     try {
       setChatLoading(true);
+      console.log('🗑️ Eliminando chat para leadId:', selectedLead.id);
       const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(selectedLead.id)}`, {
         method: 'DELETE'
       });
 
       const data = await res.json();
+      console.log('📋 Respuesta delete:', data, 'Status:', res.status);
+      
       if (!res.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to delete chat');
+        throw new Error(data?.error || `Failed to delete chat (status: ${res.status})`);
       }
 
       setChatMessages([]);
-      setChatNotice('Chat eliminado. El historial está vacío.');
+      setNewMessageAlert(false);
+      setChatNotice('✅ Chat eliminado. El historial está vacío.');
+      console.log('✅ Chat eliminado exitosamente');
       window.setTimeout(() => setChatNotice(null), 5000);
     } catch (err) {
-      console.error('Error al eliminar chat:', err);
-      setChatNotice('No se pudo eliminar el chat. Intenta de nuevo.');
+      console.error('❌ Error al eliminar chat:', err);
+      setChatNotice('❌ No se pudo eliminar el chat. Intenta de nuevo.');
       window.setTimeout(() => setChatNotice(null), 5000);
     } finally {
       setChatLoading(false);
@@ -249,23 +306,28 @@ export default function CRMDashboard() {
 
     try {
       setChatLoading(true);
+      console.log('🗑️ Eliminando cliente leadId:', selectedLead.id);
       const res = await fetch(`/api/leads?leadId=${encodeURIComponent(selectedLead.id)}`, {
         method: 'DELETE'
       });
 
       const data = await res.json();
+      console.log('📋 Respuesta delete lead:', data, 'Status:', res.status);
+      
       if (!res.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to delete lead');
+        throw new Error(data?.error || `Failed to delete lead (status: ${res.status})`);
       }
 
       setSelectedLead(null);
       setChatMessages([]);
-      setChatNotice('Cliente eliminado junto con su historial de chat.');
+      setNewMessageAlert(false);
+      setChatNotice('✅ Cliente eliminado junto con su historial de chat.');
+      console.log('✅ Cliente eliminado exitosamente');
       window.setTimeout(() => setChatNotice(null), 5000);
       fetchData();
     } catch (err) {
-      console.error('Error al eliminar cliente:', err);
-      setChatNotice('No se pudo eliminar el cliente. Intenta de nuevo.');
+      console.error('❌ Error al eliminar cliente:', err);
+      setChatNotice('❌ No se pudo eliminar el cliente. Intenta de nuevo.');
       window.setTimeout(() => setChatNotice(null), 5000);
     } finally {
       setChatLoading(false);
