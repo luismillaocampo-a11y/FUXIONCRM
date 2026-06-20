@@ -105,28 +105,34 @@ export default function CRMDashboard() {
       setNewMessageAlert(false);
     }
  useEffect(() => {
-    const leadId = selectedLead?.id;
-    if (!leadId) return;
+  const leadId = selectedLead?.id;
+  if (!leadId) return;
 
-    console.log("Iniciando suscripción Realtime para:", leadId);
+  console.log("Intentando conectar canal para el lead:", leadId);
 
-    const channel = supabase
-      .channel(`chat_messages_lead_${leadId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `lead_id=eq.${leadId}`
-        },
-        (payload) => {
-          const newMessage = payload.new;
-          if (!newMessage) return;
-          
-          console.log("¡Nuevo mensaje recibido en tiempo real!", newMessage);
+  const channel = supabase
+    .channel(`chat_messages_lead_${leadId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: `lead_id=eq.${leadId}`
+      },
+      (payload) => {
+        console.log("¡Evento recibido de Supabase!", payload.new);
+        setChatMessages((prev) => [...prev, payload.new]);
+      }
+    )
+    .subscribe((status) => {
+      console.log("Estado de la suscripción Realtime:", status);
+    });
 
-          // Actualizador funcional: React siempre verá el estado más reciente
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [selectedLead?.id, supabase]);
           setChatMessages((prev) => {
             // Evitar duplicados por seguridad
             if (prev.find((msg) => msg.id === newMessage.id)) return prev;
