@@ -104,38 +104,29 @@ export default function CRMDashboard() {
       setChatMessages([]);
       setNewMessageAlert(false);
     }
- useEffect(() => {
-  const leadId = selectedLead?.id;
-  if (!leadId) return;
+useEffect(() => {
+    const leadId = selectedLead?.id;
+    if (!leadId) return;
 
-  console.log("Intentando conectar canal para el lead:", leadId);
+    console.log("Conectando canal para el lead:", leadId);
 
-  const channel = supabase
-    .channel(`chat_messages_lead_${leadId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'chat_messages',
-        filter: `lead_id=eq.${leadId}`
-      },
-      (payload) => {
-        console.log("¡Evento recibido de Supabase!", payload.new);
-        setChatMessages((prev) => [...prev, payload.new]);
-      }
-    )
-    .subscribe((status) => {
-      console.log("Estado de la suscripción Realtime:", status);
-    });
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [selectedLead?.id, supabase]);
+    const channel = supabase
+      .channel(`chat_messages_lead_${leadId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `lead_id=eq.${leadId}`
+        },
+        (payload) => {
+          const newMessage = payload.new;
+          console.log("¡Mensaje nuevo recibido!", newMessage);
+          
           setChatMessages((prev) => {
-            // Evitar duplicados por seguridad
-            if (prev.find((msg) => msg.id === newMessage.id)) return prev;
+            // Evitar duplicados
+            if (prev.some((msg) => msg.id === newMessage.id)) return prev;
             return [...prev, newMessage];
           });
         }
@@ -143,6 +134,11 @@ export default function CRMDashboard() {
       .subscribe((status) => {
         console.log("Estado de la suscripción:", status);
       });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedLead?.id, supabase]);
 
     return () => {
       supabase.removeChannel(channel);
