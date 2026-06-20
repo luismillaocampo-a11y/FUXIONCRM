@@ -108,6 +108,8 @@ export default function CRMDashboard() {
     const leadId = selectedLead?.id;
     if (!leadId) return;
 
+    console.log('🔴 Conectando a canal Supabase para leadId:', leadId);
+
     const channel = supabase
       .channel(`chat_messages_lead_${leadId}`)
       .on(
@@ -119,28 +121,29 @@ export default function CRMDashboard() {
           filter: `lead_id=eq.${leadId}`
         },
         (payload) => {
+          console.log('📨 Mensaje recibido via Supabase:', payload.new);
           const newMessage = payload.new;
           if (!newMessage) return;
 
-          // Usamos la versión funcional para forzar a React a actualizar
           setChatMessages((prev) => {
-            // Evitamos añadirlo dos veces si por casualidad llega duplicado
-            if (prev.find((msg) => msg.id === newMessage.id)) return prev;
+            if (prev.find((msg) => msg.id === newMessage.id)) {
+              console.log('⚠️ Mensaje duplicado ignorado:', newMessage.id);
+              return prev;
+            }
+            console.log('✅ Añadiendo nuevo mensaje al estado:', newMessage.message);
+            if (newMessage.sender !== 'agent') {
+              setNewMessageAlert(true);
+            }
             return [...prev, newMessage];
           });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('🔗 Estado de canal Supabase:', status);
+      });
 
     return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [selectedLead?.id, supabase]); // Asegúrate de incluir 'supabase' aquí
-            }
-      )
-      .subscribe();
-
-    return () => {
+      console.log('❌ Desconectando canal para leadId:', leadId);
       supabase.removeChannel(channel);
     };
   }, [selectedLead?.id]);
