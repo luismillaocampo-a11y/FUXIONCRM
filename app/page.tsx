@@ -102,17 +102,18 @@ export default function CRMDashboard() {
   }, [selectedLead]);
 
   useEffect(() => {
-    if (!selectedLead) return;
+    const leadId = selectedLead?.id;
+    if (!leadId) return;
 
     const channel = supabase
-      .channel(`chat_messages_lead_${selectedLead.id}`)
+      .channel(`chat_messages_lead_${leadId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'chat_messages',
-          filter: `lead_id=eq.${selectedLead.id}`
+          filter: `lead_id=eq.${leadId}`
         },
         (payload) => {
           const newMessage = payload.new;
@@ -128,7 +129,7 @@ export default function CRMDashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedLead]);
+  }, [selectedLead?.id]);
 
   const fetchMessages = async (leadId: string) => {
     try {
