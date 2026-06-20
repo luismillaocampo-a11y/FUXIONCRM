@@ -32,6 +32,7 @@ export default function CRMDashboard() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatNotice, setChatNotice] = useState<string | null>(null);
   const [newMessageAlert, setNewMessageAlert] = useState(false);
+  const chatContainerRef = React.useRef<HTMLDivElement>(null);
   
   // Búsqueda y Filtros
   const [leadsSearch, setLeadsSearch] = useState('');
@@ -103,6 +104,13 @@ export default function CRMDashboard() {
       setNewMessageAlert(false);
     }
   }, [selectedLead]);
+
+  // Auto-scroll al último mensaje
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
 
   useEffect(() => {
     const leadId = selectedLead?.id;
@@ -929,34 +937,35 @@ export default function CRMDashboard() {
         <div className="w-96 border-l border-slate-800 bg-[#0c0f1d] flex flex-col h-full shrink-0 absolute right-0 top-0 shadow-2xl z-20 transition-all duration-300 animate-slide-in">
           {/* Cabecera */}
           <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800 bg-slate-950/40">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500/10 rounded-full text-emerald-400">
+            <div className="flex items-center gap-3 flex-1">
+              <div className="p-2 bg-emerald-500/10 rounded-full text-emerald-400 shrink-0">
                 <User className="h-4 w-4" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-sm font-semibold text-white leading-tight">{selectedLead.name}</h3>
                   {newMessageAlert && (
-                    <span className="inline-flex items-center rounded-full bg-rose-500/10 text-rose-200 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5">
-                      Nuevo mensaje
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/20 text-rose-200 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 border border-rose-500/30 animate-pulse">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-400"></span>
+                      Nuevo
                     </span>
                   )}
                 </div>
-                <p className="text-[10px] text-slate-500 font-mono">{selectedLead.phone}</p>
+                <p className="text-[10px] text-slate-500 font-mono truncate">{selectedLead.phone}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 onClick={handleDeleteChat}
-                className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest rounded-lg bg-red-500/10 text-red-300 border border-red-500/20 hover:bg-red-500/15 transition"
+                className="p-2 rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition" title="Eliminar chat"
               >
-                Eliminar chat
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={handleDeleteLead}
-                className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest rounded-lg bg-red-500/10 text-red-100 border border-red-500/20 hover:bg-red-500/20 transition"
+                className="p-2 rounded-lg hover:bg-red-600/10 text-slate-400 hover:text-red-500 transition" title="Eliminar cliente y chat"
               >
-                Eliminar cliente
+                <Trash2 className="h-4 w-4" />
               </button>
               <button 
                 onClick={() => setSelectedLead(null)}
@@ -983,7 +992,7 @@ export default function CRMDashboard() {
           </div>
 
           {/* Registro de Mensajes */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0a0c16]">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0a0c16]">
             {chatNotice && (
               <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-200">
                 {chatNotice}
