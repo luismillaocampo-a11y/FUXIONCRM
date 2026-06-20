@@ -33,6 +33,7 @@ export default function CRMDashboard() {
   const [chatNotice, setChatNotice] = useState<string | null>(null);
   const [newMessageAlert, setNewMessageAlert] = useState(false);
   const chatContainerRef = React.useRef<HTMLDivElement>(null);
+  const chatCountRef = React.useRef(0);
   
   // Búsqueda y Filtros
   const [leadsSearch, setLeadsSearch] = useState('');
@@ -113,7 +114,11 @@ export default function CRMDashboard() {
   }, [chatMessages]);
 
   useEffect(() => {
-    const leadId = selectedLead?.id;
+    chatCountRef.current = chatMessages.length;
+  }, [chatMessages]);
+
+  useEffect(() => {
+    const leadId = selectedLead?.phone?.replace(/\D/g, '') || selectedLead?.id;
     if (!leadId) return;
 
     console.log('🔴 Iniciando suscripción para leadId:', leadId);
@@ -121,7 +126,6 @@ export default function CRMDashboard() {
     console.log('🔑 Key Supabase:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Configurada' : '❌ NO configurada');
 
     let pollInterval: NodeJS.Timeout | null = null;
-    let lastMessageCount = chatMessages.length;
 
     const startPolling = () => {
       console.log('📡 Iniciando polling cada 3 segundos...');
@@ -130,13 +134,13 @@ export default function CRMDashboard() {
           const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
           const data = await res.json();
           const messages = Array.isArray(data) ? data : [];
-          
-          if (messages.length > lastMessageCount) {
+
+          if (messages.length > chatCountRef.current) {
             const newMsg = messages[messages.length - 1];
-            console.log('✅ Nuevo mensaje detectado vía polling:', newMsg.message);
+            console.log('✅ Nuevo mensaje detectado vía polling:', newMsg?.message);
             setChatMessages(messages);
-            lastMessageCount = messages.length;
-            if (newMsg.sender !== 'agent') {
+            chatCountRef.current = messages.length;
+            if (newMsg && newMsg.sender !== 'agent') {
               setNewMessageAlert(true);
             }
           }
@@ -951,7 +955,7 @@ export default function CRMDashboard() {
                     </span>
                   )}
                 </div>
-                <p className="text-[10px] text-slate-500 font-mono truncate">{selectedLead.phone}</p>
+                <p className="text-[10px] text-slate-500 font-mono truncate">+{selectedLead.phone.replace(/\D/g, '')}</p>
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
