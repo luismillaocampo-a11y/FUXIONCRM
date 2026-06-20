@@ -31,6 +31,7 @@ export default function CRMDashboard() {
   const [isSimulatingCustomer, setIsSimulatingCustomer] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatNotice, setChatNotice] = useState<string | null>(null);
+  const [newMessageAlert, setNewMessageAlert] = useState(false);
   
   // Búsqueda y Filtros
   const [leadsSearch, setLeadsSearch] = useState('');
@@ -95,9 +96,11 @@ export default function CRMDashboard() {
   // Cargar mensajes cuando cambia el cliente seleccionado
   useEffect(() => {
     if (selectedLead) {
+      setNewMessageAlert(false);
       fetchMessages(selectedLead.id);
     } else {
       setChatMessages([]);
+      setNewMessageAlert(false);
     }
   }, [selectedLead]);
 
@@ -117,9 +120,13 @@ export default function CRMDashboard() {
         },
         (payload) => {
           const newMessage = payload.new;
-          if (!newMessage) return;
+          if (!newMessage || newMessage.lead_id !== leadId) return;
+
           setChatMessages((prev) => {
             if (prev.some((msg) => msg.id === newMessage.id)) return prev;
+            if (newMessage.sender !== 'agent') {
+              setNewMessageAlert(true);
+            }
             return [...prev, newMessage];
           });
         }
@@ -855,7 +862,14 @@ export default function CRMDashboard() {
                 <User className="h-4 w-4" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-white leading-tight">{selectedLead.name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-white leading-tight">{selectedLead.name}</h3>
+                  {newMessageAlert && (
+                    <span className="inline-flex items-center rounded-full bg-rose-500/10 text-rose-200 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5">
+                      Nuevo mensaje
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] text-slate-500 font-mono">{selectedLead.phone}</p>
               </div>
             </div>
