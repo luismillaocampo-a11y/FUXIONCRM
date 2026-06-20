@@ -104,31 +104,44 @@ export default function CRMDashboard() {
       setChatMessages([]);
       setNewMessageAlert(false);
     }
-  }, [selectedLead]);
-
-  // Auto-scroll al último mensaje
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [chatMessages]);
-
-  useEffect(() => {
-    chatCountRef.current = chatMessages.length;
-  }, [chatMessages]);
-
-  useEffect(() => {
-    const leadId = selectedLead?.phone?.replace(/\D/g, '') || selectedLead?.id;
+ useEffect(() => {
+    const leadId = selectedLead?.id;
     if (!leadId) return;
 
-    console.log('🔴 Iniciando suscripción para leadId:', leadId);
-    console.log('📊 URL Supabase:', process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Configurada' : '❌ NO configurada');
-    console.log('🔑 Key Supabase:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Configurada' : '❌ NO configurada');
+    console.log("Iniciando suscripción Realtime para:", leadId);
 
-    let pollInterval: NodeJS.Timeout | null = null;
+    const channel = supabase
+      .channel(`chat_messages_lead_${leadId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `lead_id=eq.${leadId}`
+        },
+        (payload) => {
+          const newMessage = payload.new;
+          if (!newMessage) return;
+          
+          console.log("¡Nuevo mensaje recibido en tiempo real!", newMessage);
 
-    const startPolling = () => {
-      console.log('📡 Iniciando polling cada 3 segundos...');
+          // Actualizador funcional: React siempre verá el estado más reciente
+          setChatMessages((prev) => {
+            // Evitar duplicados por seguridad
+            if (prev.find((msg) => msg.id === newMessage.id)) return prev;
+            return [...prev, newMessage];
+          });
+        }
+      )
+      .subscribe((status) => {
+        console.log("Estado de la suscripción:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedLead?.id]); // Solo se reconecta si cambia el lead
       pollInterval = setInterval(async () => {
         try {
           const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
