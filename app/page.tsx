@@ -120,7 +120,14 @@ export default function CRMDashboard() {
         },
         (payload) => {
           const newMessage = payload.new;
-          setChatMessages((prev) => [...prev, newMessage]);
+          if (!newMessage) return;
+
+          // Usamos la versión funcional para forzar a React a actualizar
+          setChatMessages((prev) => {
+            // Evitamos añadirlo dos veces si por casualidad llega duplicado
+            if (prev.find((msg) => msg.id === newMessage.id)) return prev;
+            return [...prev, newMessage];
+          });
         }
       )
       .subscribe();
@@ -128,7 +135,7 @@ export default function CRMDashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedLead?.id]);
+  }, [selectedLead?.id, supabase]); // Asegúrate de incluir 'supabase' aquí
             }
       )
       .subscribe();
