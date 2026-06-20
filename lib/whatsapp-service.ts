@@ -60,7 +60,9 @@ class WhatsAppService {
               const text = this.extractMessageText(message);
               if (!text) continue;
 
-              const phone = remoteJid.split('@')[0];
+              const phone = this.getPhoneFromWhatsappId(remoteJid);
+              if (!phone) continue;
+
               const leadId = phone;
               const leadName = incoming.pushName || `WhatsApp ${phone}`;
 
@@ -157,6 +159,40 @@ class WhatsAppService {
       width: 420
     });
     return this.latestQrDataUrl;
+  }
+
+  private getPhoneFromWhatsappId(id: string): string | null {
+    if (!id || typeof id !== 'string') return null;
+    const raw = id.split('@')[0] || '';
+    const digits = raw.replace(/\D/g, '');
+    return digits.length > 0 ? digits : null;
+  }
+
+  private getWhatsappJid(phone: string): string {
+    if (!phone || typeof phone !== 'string') throw new Error('Invalid WhatsApp phone');
+    const raw = phone.replace(/\D/g, '');
+    if (!raw) throw new Error('Invalid WhatsApp phone');
+    return `${raw}@s.whatsapp.net`;
+  }
+
+  public async sendMessageToPhone(phone: string, text: string) {
+    if (!text || !text.toString().trim()) throw new Error('Message text is required');
+    const jid = this.getWhatsappJid(phone);
+    if (!this.socket) {
+      await this.initialize();
+    }
+    if (!this.socket) {
+      throw new Error('WhatsApp socket not initialized');
+    }
+    return this.socket.sendMessage(jid, { text: text.toString().trim() });
+  }
+
+  public async sendMessageToLead(leadId: string, text: string) {
+    const lead = await db.getLeadById(leadId);
+    if (!lead || !lead.phone) {
+      throw new Error('Lead not found or missing phone');
+    }
+    return this.sendMessageToPhone(lead.phone, text);
   }
 
   private extractMessageText(message: any): string | null {

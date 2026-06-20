@@ -109,7 +109,7 @@ export default function CRMDashboard() {
     e.preventDefault();
     if (!typedMessage.trim() || !selectedLead) return;
 
-    const messageText = typedMessage;
+    const messageText = typedMessage.trim();
     setTypedMessage('');
     setChatLoading(true);
 
@@ -119,7 +119,7 @@ export default function CRMDashboard() {
         const userMsg = { id: `m-temp-usr-${Date.now()}`, sender: 'customer', message: messageText, created_at: new Date().toISOString() };
         setChatMessages(prev => [...prev, userMsg]);
 
-        const res = await fetch('/api/chat', {
+        await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -127,17 +127,19 @@ export default function CRMDashboard() {
             message: messageText
           })
         });
-        
+
         fetchData();
         const updatedLeads = await (await fetch('/api/leads')).json();
         const freshLead = updatedLeads.find((l: any) => l.id === selectedLead.id);
         if (freshLead) setSelectedLead(freshLead);
-        
-        await fetchMessages(selectedLead.id);
 
+        await fetchMessages(selectedLead.id);
       } else {
-        // Enviar respuesta manual del agente
-        const res = await fetch('/api/chat/messages', {
+        // Enviar mensaje de agente a WhatsApp
+        const agentMsg = { id: `m-temp-agent-${Date.now()}`, sender: 'agent', message: messageText, created_at: new Date().toISOString() };
+        setChatMessages(prev => [...prev, agentMsg]);
+
+        const res = await fetch('/api/whatsapp/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -145,6 +147,12 @@ export default function CRMDashboard() {
             message: messageText
           })
         });
+
+        const data = await res.json();
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.error || 'Failed to send WhatsApp message');
+        }
+
         await fetchMessages(selectedLead.id);
       }
     } catch (err) {
