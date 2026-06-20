@@ -32,3 +32,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const leadId = searchParams.get('leadId');
+
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing leadId parameter' }, { status: 400 });
+    }
+
+    await db.deleteChatMessages(leadId);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

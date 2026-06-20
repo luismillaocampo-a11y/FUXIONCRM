@@ -24,6 +24,7 @@ export default function CRMDashboard() {
   const [typedMessage, setTypedMessage] = useState('');
   const [isSimulatingCustomer, setIsSimulatingCustomer] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatNotice, setChatNotice] = useState<string | null>(null);
   
   // Búsqueda y Filtros
   const [leadsSearch, setLeadsSearch] = useState('');
@@ -157,6 +158,33 @@ export default function CRMDashboard() {
       }
     } catch (err) {
       console.error('Error al enviar mensaje:', err);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleDeleteChat = async () => {
+    if (!selectedLead) return;
+    if (!confirm('¿Estás seguro de que deseas eliminar todo el chat de este cliente?')) return;
+
+    try {
+      setChatLoading(true);
+      const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(selectedLead.id)}`, {
+        method: 'DELETE'
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to delete chat');
+      }
+
+      setChatMessages([]);
+      setChatNotice('Chat eliminado. El historial está vacío.');
+      window.setTimeout(() => setChatNotice(null), 5000);
+    } catch (err) {
+      console.error('Error al eliminar chat:', err);
+      setChatNotice('No se pudo eliminar el chat. Intenta de nuevo.');
+      window.setTimeout(() => setChatNotice(null), 5000);
     } finally {
       setChatLoading(false);
     }
@@ -766,12 +794,20 @@ export default function CRMDashboard() {
                 <p className="text-[10px] text-slate-500 font-mono">{selectedLead.phone}</p>
               </div>
             </div>
-            <button 
-              onClick={() => setSelectedLead(null)}
-              className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDeleteChat}
+                className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest rounded-lg bg-red-500/10 text-red-300 border border-red-500/20 hover:bg-red-500/15 transition"
+              >
+                Eliminar chat
+              </button>
+              <button 
+                onClick={() => setSelectedLead(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           {/* Barra de Modo */}
@@ -791,6 +827,11 @@ export default function CRMDashboard() {
 
           {/* Registro de Mensajes */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0a0c16]">
+            {chatNotice && (
+              <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-200">
+                {chatNotice}
+              </div>
+            )}
             {chatMessages.map((msg) => (
               <div 
                 key={msg.id} 

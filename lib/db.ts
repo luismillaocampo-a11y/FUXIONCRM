@@ -662,6 +662,16 @@ export const db = {
     }
   },
 
+  async deleteChatMessages(leadId: string): Promise<void> {
+    if (useSupabase) {
+      const { error } = await getSupabase().from('chat_messages').delete().eq('lead_id', leadId);
+      if (error) throw error;
+    } else {
+      const db = getSqliteDb();
+      db.prepare('DELETE FROM chat_messages WHERE lead_id = ?').run(leadId);
+    }
+  },
+
   getWhatsappSession(sessionId: string = 'default'): Promise<any> {
     return getWhatsappSession(sessionId);
   },
