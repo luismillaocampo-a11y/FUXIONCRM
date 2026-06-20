@@ -1,8 +1,7 @@
+ 
 node_modules
+.git
 .next
 dist
-Dockerfile*
-.git
-.gitignore
-.env
+build
 *.log
