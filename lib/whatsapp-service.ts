@@ -43,6 +43,36 @@ class WhatsAppService {
         // Persist credentials to Supabase when Baileys emits updates
         sock.ev.on('creds.update', saveCreds);
 
+        sock.ev.on('messages.upsert', async (messageUpdate: any) => {
+          try {
+            if (messageUpdate.type !== 'notify' || !Array.isArray(messageUpdate.messages)) return;
+
+            for (const incoming of messageUpdate.messages) {
+              const key = incoming?.key || {};
+              const message = incoming?.message;
+              if (!message || !key.remoteJid) continue;
+
+              const remoteJid = key.remoteJid.toString();
+              if (remoteJid === 'status@broadcast' || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@g.us')) continue;
+              if (incoming.key?.fromMe) continue;
+              if (message.protocolMessage || message.messageStubType) continue;
+
+              const text = this.extractMessageText(message);
+              if (!text) continue;
+
+              const phone = remoteJid.split('@')[0];
+              const leadId = phone;
+              const leadName = incoming.pushName || `WhatsApp ${phone}`;
+
+              await db.upsertLead({ id: leadId, name: leadName, phone, status: 'New', tags: [], bot_active: true });
+              await db.addMessage(leadId, 'customer', text);
+              console.log('Saved incoming WhatsApp message for lead', leadId, 'text:', text.slice(0, 100));
+            }
+          } catch (messageError: any) {
+            console.error('Error processing incoming WhatsApp messages:', messageError?.message || messageError, messageError?.stack);
+          }
+        });
+
         sock.ev.on('connection.update', (update: any) => {
           if (update.qr) {
             this.latestQrText = update.qr;
@@ -127,6 +157,42 @@ class WhatsAppService {
       width: 420
     });
     return this.latestQrDataUrl;
+  }
+
+  private extractMessageText(message: any): string | null {
+    if (!message || typeof message !== 'object') return null;
+
+    const messageTypes = [
+      'conversation',
+      'extendedTextMessage',
+      'imageMessage',
+      'videoMessage',
+      'documentMessage',
+      'audioMessage',
+      'stickerMessage',
+      'buttonsResponseMessage',
+      'templateButtonReplyMessage',
+      'listResponseMessage',
+      'reactionMessage'
+    ];
+
+    for (const type of messageTypes) {
+      if (message[type]) {
+        const payload = message[type];
+        if (type === 'conversation') return payload;
+        if (type === 'extendedTextMessage') return payload?.text || payload?.contextInfo?.quotedMessage?.conversation || null;
+        if (type === 'imageMessage' || type === 'videoMessage' || type === 'documentMessage' || type === 'audioMessage') {
+          return payload?.caption || null;
+        }
+        if (type === 'stickerMessage') return payload?.url ? 'Sticker' : null;
+        if (type === 'buttonsResponseMessage') return payload?.selectedButtonId || payload?.selectedDisplayText || null;
+        if (type === 'templateButtonReplyMessage') return payload?.selectedId || payload?.selectedDisplayText || null;
+        if (type === 'listResponseMessage') return payload?.singleSelectReply?.selectedRowId || payload?.singleSelectReply?.title || null;
+        if (type === 'reactionMessage') return payload?.text || null;
+      }
+    }
+
+    return null;
   }
 
   public async getQrDataUrl(timeoutMs: number = DEFAULT_QR_TIMEOUT_MS): Promise<string | null> {
