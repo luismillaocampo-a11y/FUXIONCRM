@@ -1,26 +1,26 @@
-# Usamos una imagen de Node.js oficial (basada en Debian, más completa)
-FROM node:20
-
-# Instalamos las herramientas necesarias para compilar librerías nativas
-RUN apt-get update && apt-get install -y python3 make g++
-
-# Directorio de trabajo
+# Etapa de dependencias
+FROM node:20-alpine AS deps
+RUN apk add --no-cache python3 make g++
 WORKDIR /app
-
-# Copiamos archivos de dependencias
 COPY package*.json ./
+RUN npm ci
 
-# Instalamos dependencias
-RUN npm install
-
-# Copiamos el resto del código
+# Etapa de construcción
+FROM node:20-alpine AS builder
+RUN apk add --no-cache python3 make g++
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-# Compilamos la aplicación (Next.js)
 RUN npm run build
 
-# Exponemos el puerto 3000
-EXPOSE 3000
+# Etapa final (ejecución)
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/public ./public
 
-# Comando de inicio
+EXPOSE 3000
 CMD ["npm", "start"]
