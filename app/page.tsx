@@ -41,15 +41,25 @@ export default function CRMDashboard() {
       return;
     }
 
+    console.log('[Realtime Debug] Iniciando useEffect para Lead:', {
+      id: selectedLead.id,
+      name: selectedLead.name,
+      phone: selectedLead.phone
+    });
+
     let cancelled = false;
 
     const fetchMessages = async () => {
       try {
+        console.log(`[Realtime Debug] Obteniendo historial inicial para leadId: ${selectedLead.id}`);
         const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(selectedLead.id)}`);
         const data = await res.json();
-        if (!cancelled && Array.isArray(data)) setChatMessages(data);
+        if (!cancelled && Array.isArray(data)) {
+          setChatMessages(data);
+          console.log(`[Realtime Debug] Historial cargado con éxito. Mensajes: ${data.length}`);
+        }
       } catch (err) {
-        console.error('Failed to fetch chat messages:', err);
+        console.error('[Realtime Debug] Error cargando mensajes del chat:', err);
       }
     };
 
@@ -58,42 +68,60 @@ export default function CRMDashboard() {
     let channel: any = null;
 
     if (supabaseBrowser) {
+      const channelName = `chat_${selectedLead.id}`;
+      const filterStr = `lead_id=eq.${selectedLead.id}`;
+
+      console.log('[Realtime Debug] Creando canal de Supabase:', {
+        canal: channelName,
+        filtro: filterStr,
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL
+      });
+
       channel = supabaseBrowser
-        .channel(`chat_${selectedLead.id}`)
+        .channel(channelName)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
             table: 'chat_messages',
-            filter: `lead_id=eq.${selectedLead.id}`,
+            filter: filterStr,
           },
           (payload) => {
-            console.log('[Realtime] postgres_changes INSERT received:', payload);
-            const incoming = payload.new as { id?: string };
+            console.log('[Realtime Debug] Cambio postgres_changes recibido en tiempo real:', payload);
+            const incoming = payload.new as { id?: string; lead_id?: string; message?: string };
+            console.log(`[Realtime Debug] Nuevo mensaje de lead_id=${incoming.lead_id}: "${incoming.message}"`);
             setChatMessages((prev) => {
-              if (incoming.id && prev.some((m) => m.id === incoming.id)) return prev;
+              if (incoming.id && prev.some((m) => m.id === incoming.id)) {
+                console.log('[Realtime Debug] Mensaje duplicado omitido:', incoming.id);
+                return prev;
+              }
               return [...prev, payload.new];
             });
           }
-        )
-        .subscribe((status, err) => {
-          console.log('[Realtime] subscription status:', status, err ?? '');
-          if (status === 'SUBSCRIBED') {
-            console.log('[Realtime] listening on chat_messages where lead_id=eq.' + selectedLead.id);
-          }
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.error('[Realtime] subscription failed:', status, err);
-          }
-        });
+        );
+
+      console.log(`[Realtime Debug] Suscribiéndose al canal "${channelName}" con filtro "${filterStr}" para el Lead ID "${selectedLead.id}"...`);
+
+      channel.subscribe((status: string, err: any) => {
+        console.log(`[Realtime Debug] Estado de suscripción para "${channelName}":`, status, err ?? '');
+        if (status === 'SUBSCRIBED') {
+          console.log(`[Realtime Debug] ¡Suscripción ACTIVA! Escuchando chat_messages con filtro: ${filterStr}`);
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error(`[Realtime Debug] Error en suscripción a canal "${channelName}":`, status, err);
+        }
+      });
     } else {
-      console.warn('[Realtime] supabaseBrowser is null — check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
+      console.warn('[Realtime Debug] supabaseBrowser es null — no se puede iniciar la suscripción en tiempo real.');
     }
 
     return () => {
+      console.log(`[Realtime Debug] Limpiando suscripción para lead: ${selectedLead.id}`);
       cancelled = true;
       if (channel && supabaseBrowser) {
         supabaseBrowser.removeChannel(channel);
+        console.log(`[Realtime Debug] Canal "${channel.name}" removido de forma segura.`);
       }
     };
   }, [selectedLead]);
