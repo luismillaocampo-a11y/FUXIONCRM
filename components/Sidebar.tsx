@@ -3,14 +3,15 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, GitFork, BookOpen, AlertTriangle, Settings, Activity } from 'lucide-react';
+import { LayoutDashboard, GitFork, BookOpen, AlertTriangle, Settings, Activity, MessageSquare } from 'lucide-react';
 
 export default function Sidebar() {
   const pathname = usePathname();
 
   const links = [
     { href: '/', label: 'Panel de Clientes', icon: LayoutDashboard },
-    { href: '/flows', label: 'Creador de Flujos', icon: GitFork }
+    { href: '/flows', label: 'Creador de Flujos', icon: GitFork },
+    { href: '/whatsapp', label: 'Conexión WhatsApp', icon: MessageSquare }
   ];
 
   return (

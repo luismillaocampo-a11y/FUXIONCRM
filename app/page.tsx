@@ -1,7 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
-import { X, Send, User, Bot, UserCheck, Loader2 } from 'lucide-react';
+import { X, Send, User, Bot, UserCheck, Loader2, MessageSquare } from 'lucide-react';
+import Link from 'next/link';
 
 export default function CRMDashboard() {
   const [activeTab, setActiveTab] = useState<'leads' | 'gaps' | 'kb'>('leads');
@@ -81,12 +82,19 @@ export default function CRMDashboard() {
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0c0f1d] text-white p-8">
       <header className="flex justify-between items-center mb-8">
         <h2 className="text-xl font-bold">Panel de Control</h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {(['leads', 'gaps', 'kb'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded ${activeTab === tab ? 'bg-slate-700' : 'bg-slate-900'}`}>
               {tab.toUpperCase()}
             </button>
           ))}
+          <Link 
+            href="/whatsapp" 
+            className="px-4 py-2 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/30 transition text-sm flex items-center gap-2"
+          >
+            <MessageSquare size={16} />
+            <span>WhatsApp (QR)</span>
+          </Link>
         </div>
       </header>
 
