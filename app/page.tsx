@@ -1,5 +1,4 @@
 'use client';
-import { supabase } from '@/lib/db';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
@@ -97,45 +96,21 @@ console.log("EL ARCHIVO PAGE.TSX SE ESTÁ CARGANDO");
 
   // Cargar mensajes cuando cambia el cliente seleccionado
   useEffect(() => {
-    if (selectedLead) {
-      setNewMessageAlert(false);
-      fetchMessages(selectedLead.id);
-    } else {
+    if (!selectedLead) {
       setChatMessages([]);
       setNewMessageAlert(false);
+      return;
     }
-useEffect(() => {
-  const leadId = selectedLead?.id;
-  if (!leadId) return;
 
-  console.log("Iniciando conexión Realtime para el lead:", leadId);
+    const leadId = selectedLead.id;
+    setNewMessageAlert(false);
+    fetchMessages(leadId);
 
-  const channel = supabase
-    .channel(`chat_messages_lead_${leadId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'chat_messages',
-        filter: `lead_id=eq.${leadId}`
-      },
-      (payload) => {
-        console.log("¡MENSAJE RECIBIDO POR SUPABASE REALTIME!", payload.new);
-        setChatMessages((prev) => {
-          if (prev.some((msg) => msg.id === payload.new.id)) return prev;
-          return [...prev, payload.new];
-        });
-      }
-    )
-    .subscribe((status) => {
-      console.log("Estado de la suscripción Realtime:", status);
-    });
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [selectedLead?.id, supabase]);// Solo se reconecta si cambia el lead
+    const startPolling = () => {
+      if (pollInterval) clearInterval(pollInterval);
+
       pollInterval = setInterval(async () => {
         try {
           const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
@@ -150,6 +125,9 @@ useEffect(() => {
             if (newMsg && newMsg.sender !== 'agent') {
               setNewMessageAlert(true);
             }
+          } else if (messages.length !== chatCountRef.current) {
+            setChatMessages(messages);
+            chatCountRef.current = messages.length;
           }
         } catch (err) {
           console.error('❌ Error en polling:', err);
@@ -157,67 +135,60 @@ useEffect(() => {
       }, 3000);
     };
 
-    // Intentar con Supabase primero
-    try {
-      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-        console.warn('⚠️ Supabase no configurado, usando polling fallback');
-        startPolling();
-        return () => {
-          if (pollInterval) clearInterval(pollInterval);
-        };
-      }
+    const hasRealtimeConfig = Boolean(
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    );
 
-      const channel = supabase
-        .channel(`chat_messages_lead_${leadId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'chat_messages',
-            filter: `lead_id=eq.${leadId}`
-          },
-          (payload) => {
-            console.log('📨 Mensaje recibido vía Supabase:', payload.new);
-            const newMessage = payload.new;
-            if (!newMessage || newMessage.lead_id !== leadId) return;
-
-            setChatMessages((prev) => {
-              if (prev.find((msg) => msg.id === newMessage.id)) {
-                console.log('⚠️ Mensaje duplicado ignorado:', newMessage.id);
-                return prev;
-              }
-              console.log('✅ Añadiendo nuevo mensaje:', newMessage.message);
-              if (newMessage.sender !== 'agent') {
-                setNewMessageAlert(true);
-              }
-              return [...prev, newMessage];
-            });
-          }
-        )
-        .subscribe((status) => {
-          console.log('🔗 Estado de canal Supabase:', status);
-          if (status === 'SUBSCRIBED') {
-            console.log('✅ Suscripción exitosa a Supabase');
-          } else if (status === 'CHANNEL_ERROR') {
-            console.warn('⚠️ Error en canal, iniciando polling...');
-            startPolling();
-          }
-        });
-
-      return () => {
-        console.log('❌ Desconectando canal para leadId:', leadId);
-        supabase.removeChannel(channel);
-        if (pollInterval) clearInterval(pollInterval);
-      };
-    } catch (err) {
-      console.error('❌ Error al conectar Supabase:', err);
+    if (!hasRealtimeConfig) {
+      console.warn('⚠️ Supabase no configurado, usando polling fallback');
       startPolling();
       return () => {
         if (pollInterval) clearInterval(pollInterval);
       };
     }
-  }, [selectedLead?.id]);
+
+    const channel = supabase
+      .channel(`chat_messages_lead_${leadId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `lead_id=eq.${leadId}`
+        },
+        (payload) => {
+          console.log('📨 Mensaje recibido vía Supabase:', payload.new);
+          const newMessage = payload.new;
+          if (!newMessage || newMessage.lead_id !== leadId) return;
+
+          setChatMessages((prev) => {
+            if (prev.find((msg) => msg.id === newMessage.id)) {
+              console.log('⚠️ Mensaje duplicado ignorado:', newMessage.id);
+              return prev;
+            }
+            if (newMessage.sender !== 'agent') {
+              setNewMessageAlert(true);
+            }
+            return [...prev, newMessage];
+          });
+        }
+      )
+      .subscribe((status) => {
+        console.log('🔗 Estado de canal Supabase:', status);
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('⚠️ Error en canal, iniciando polling...');
+          startPolling();
+        }
+      });
+
+    return () => {
+      console.log('❌ Desconectando canal para leadId:', leadId);
+      supabase.removeChannel(channel);
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [selectedLead]);
 
   const fetchMessages = async (leadId: string) => {
     try {
