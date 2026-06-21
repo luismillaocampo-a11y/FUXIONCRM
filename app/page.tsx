@@ -90,7 +90,7 @@ export default function CRMDashboard() {
       setErrorMsg(err.message || 'Error al conectar con la base de datos.');
     }
   };
-
+console.log("EL ARCHIVO PAGE.TSX SE ESTÁ CARGANDO");
   useEffect(() => {
     fetchData();
   }, []);
