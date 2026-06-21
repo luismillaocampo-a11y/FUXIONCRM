@@ -1396,15 +1396,17 @@ export default function CRMDashboard() {
       )}
       {/* Notificación flotante de nuevos mensajes */}
       {activeNotification && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-2xl border border-emerald-500/30 bg-slate-950/95 p-4 shadow-2xl shadow-emerald-500/10 animate-slide-in flex items-start gap-3 backdrop-blur-md">
-          <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+        <div className="fixed bottom-8 right-8 z-50 w-96 rounded-3xl border border-emerald-500/25 bg-slate-950/50 p-5 shadow-[0_20px_50px_rgba(16,185,129,0.12)] animate-slide-in flex items-start gap-4 backdrop-blur-xl transition-all duration-300">
+          <div className="mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/15">
             <MessageSquare className="h-4 w-4 animate-bounce" />
           </div>
           <div className="flex-1 min-w-0">
-            <span className="text-xs font-bold text-emerald-400 block">¡Nuevo Mensaje!</span>
-            <span className="text-xs font-semibold text-white block mt-0.5 truncate">{activeNotification.senderName}</span>
-            <p className="text-xs text-slate-300 mt-1 line-clamp-2 italic">"{activeNotification.message}"</p>
-            <div className="mt-3 flex gap-2">
+            <span className="text-xs font-bold text-emerald-400 tracking-wider uppercase block">¡Nuevo Mensaje!</span>
+            <span className="text-sm font-semibold text-white block mt-1 truncate">{activeNotification.senderName}</span>
+            <p className="text-xs text-slate-200 mt-2 line-clamp-3 leading-relaxed italic bg-slate-950/30 p-2.5 rounded-xl border border-slate-900/60">
+              "{activeNotification.message}"
+            </p>
+            <div className="mt-4 flex gap-2 justify-end">
               <button
                 onClick={() => {
                   fetch('/api/leads')
@@ -1419,13 +1421,13 @@ export default function CRMDashboard() {
                     .catch(err => console.error(err));
                   setActiveNotification(null);
                 }}
-                className="px-2.5 py-1 text-[10px] font-bold rounded bg-emerald-500 hover:bg-emerald-600 text-white transition-all"
+                className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-md shadow-emerald-500/10"
               >
                 Responder
               </button>
               <button
                 onClick={() => setActiveNotification(null)}
-                className="px-2.5 py-1 text-[10px] font-bold rounded bg-slate-800 hover:bg-slate-700 text-slate-400 transition-all"
+                className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 transition-all border border-slate-800"
               >
                 Descartar
               </button>

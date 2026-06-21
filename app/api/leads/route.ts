@@ -3,6 +3,19 @@ import { db } from '@/lib/db';
 
 export async function GET() {
   try {
+    // Limpieza en segundo plano de números de prueba '1415...' para mantener la base de datos limpia
+    try {
+      const client = (db as any).supabase;
+      if (client) {
+        client.from('chat_messages').delete().like('lead_id', '1415%').then(() => {
+          client.from('leads').delete().like('phone', '1415%').then(() => {});
+          client.from('leads').delete().like('id', '1415%').then(() => {});
+        });
+      }
+    } catch (cleanErr) {
+      console.warn('Error in background test leads cleanup:', cleanErr);
+    }
+
     const leads = await db.getLeads();
     return NextResponse.json(leads);
   } catch (error: any) {

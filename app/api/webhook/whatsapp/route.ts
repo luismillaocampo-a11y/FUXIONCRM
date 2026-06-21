@@ -173,6 +173,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Ignored: Invalid phone number' });
     }
 
+    if (phone.startsWith('1415')) {
+      console.log('[webhook/whatsapp] Ignored: Test number starting with 1415:', phone);
+      return NextResponse.json({ success: true, message: 'Ignored: Test number' });
+    }
+
     const messageText = extractMessageText(messageObj);
     if (!messageText) {
       console.log('[webhook/whatsapp] Ignored: No text extractable from message');
