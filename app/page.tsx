@@ -86,6 +86,9 @@ export default function CRMDashboard() {
   // Estado de error de conexión/configuración
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Estado de WhatsApp
+  const [whatsappStatus, setWhatsappStatus] = useState<string>('disconnected');
+
   // Carga de datos inicial
   const fetchData = async () => {
     try {
@@ -114,6 +117,17 @@ export default function CRMDashboard() {
         return;
       }
       setKbItems(Array.isArray(kbData) ? kbData : []);
+
+      // Obtener estado de WhatsApp
+      try {
+        const waStatusRes = await fetch('/api/whatsapp?statusOnly=true');
+        const waStatusData = await waStatusRes.json();
+        if (waStatusData && waStatusData.success) {
+          setWhatsappStatus(waStatusData.status);
+        }
+      } catch (waErr) {
+        console.error('Error fetching WhatsApp status:', waErr);
+      }
     } catch (err: any) {
       console.error('Error cargando datos:', err);
       setErrorMsg(err.message || 'Error al conectar con la base de datos.');
@@ -122,6 +136,25 @@ export default function CRMDashboard() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // Polling del estado de WhatsApp cada 15 segundos
+  useEffect(() => {
+    const fetchWAStatus = async () => {
+      try {
+        const res = await fetch('/api/whatsapp?statusOnly=true');
+        const data = await res.json();
+        if (data && data.success) {
+          setWhatsappStatus(data.status);
+        }
+      } catch (err) {
+        console.error('Error fetching WhatsApp status in poll:', err);
+      }
+    };
+
+    fetchWAStatus();
+    const interval = setInterval(fetchWAStatus, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   // Cargar mensajes cuando cambia el cliente seleccionado
@@ -560,10 +593,19 @@ export default function CRMDashboard() {
           )}
           <Link 
             href="/whatsapp" 
-            className="px-4 py-2 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/30 transition text-sm flex items-center gap-2"
+            className={`px-4 py-2 rounded border transition text-sm flex items-center gap-2 ${
+              whatsappStatus === 'connected' || whatsappStatus === 'open'
+                ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-600/20'
+                : 'bg-rose-600/10 text-rose-400 border-rose-500/20 hover:bg-rose-600/20'
+            }`}
           >
+            <span className={`h-2 w-2 rounded-full ${
+              whatsappStatus === 'connected' || whatsappStatus === 'open'
+                ? 'bg-emerald-500 animate-pulse'
+                : 'bg-rose-500 animate-pulse'
+            }`} />
             <MessageSquare size={16} />
-            <span>WhatsApp (QR)</span>
+            <span>WhatsApp</span>
           </Link>
         </div>
       </header>
@@ -572,19 +614,64 @@ export default function CRMDashboard() {
       <div className="flex-1 overflow-y-auto p-8 flex flex-col min-w-0">
         <div className="mb-6 rounded-3xl border border-slate-800/80 bg-slate-950/80 p-5 shadow-xl shadow-black/10">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-semibold text-white">Panel de WhatsApp</h3>
-              <p className="text-sm text-slate-400">Genera y escanea el código QR de la sesión en un panel dedicado.</p>
+            <div className="flex items-start gap-4">
+              <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 border border-slate-800 text-slate-400">
+                <MessageSquare className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-semibold text-white">Panel de WhatsApp</h3>
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                    whatsappStatus === 'connected' || whatsappStatus === 'open'
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      : 'bg-rose-500/10 text-rose-400 border border-rose-500/20 animate-pulse'
+                  }`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${
+                      whatsappStatus === 'connected' || whatsappStatus === 'open'
+                        ? 'bg-emerald-400'
+                        : 'bg-rose-400'
+                    }`} />
+                    {whatsappStatus === 'connected' || whatsappStatus === 'open' ? 'Conectado' : 'Desconectado'}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-400 mt-0.5">Vincule y gestione la conexión de WhatsApp en un panel dedicado.</p>
+              </div>
             </div>
             <Link
               href="/whatsapp"
-              className="inline-flex items-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-400"
+              className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white shadow-lg transition duration-200 ${
+                whatsappStatus === 'connected' || whatsappStatus === 'open'
+                  ? 'bg-emerald-500 shadow-emerald-500/15 hover:bg-emerald-400'
+                  : 'bg-cyan-500 shadow-cyan-500/15 hover:bg-cyan-400'
+              }`}
             >
               <MessageSquare className="h-4 w-4" />
-              Ir a WhatsApp
+              {whatsappStatus === 'connected' || whatsappStatus === 'open' ? 'Administrar Conexión' : 'Ir a WhatsApp (Vincular)'}
             </Link>
           </div>
         </div>
+
+        {/* Alerta de sesión caída de WhatsApp */}
+        {(whatsappStatus !== 'connected' && whatsappStatus !== 'open') && (
+          <div className="mb-6 p-4 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-200 text-sm flex gap-3 items-start shadow-[0_4px_12px_rgba(239,68,68,0.1)]">
+            <AlertCircle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5 animate-pulse" />
+            <div className="flex-1">
+              <span className="font-semibold block text-rose-400">Sesión de WhatsApp Desconectada</span>
+              <p className="mt-1">
+                La conexión de WhatsApp está inactiva. El bot de IA no podrá responder a los mensajes entrantes de los clientes en tiempo real.
+              </p>
+              <div className="mt-3">
+                <Link
+                  href="/whatsapp"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition-all"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Ir a Vincular o Reconectar Sesión
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Banner de error de base de datos */}
         {errorMsg && (

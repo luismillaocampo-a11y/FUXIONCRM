@@ -18,10 +18,21 @@ class WhatsAppService {
   public status: string | null = null;
   public error: string | null = null;
   private qrWaiters: QrWaiter[] = [];
+  private lastInitTime = 0;
+  private isResetting = false;
 
-  public async initialize() {
+  public async initialize(force: boolean = false) {
     if (this.socket) return;
     if (this.initPromise) return this.initPromise;
+
+    const now = Date.now();
+    const timeSinceLastInit = now - this.lastInitTime;
+    if (!force && timeSinceLastInit < 30000) {
+      console.log(`[WhatsAppService] Evitando inicialización repetida, cooldown activo. Restante: ${Math.round((30000 - timeSinceLastInit) / 1000)}s`);
+      return;
+    }
+    this.lastInitTime = now;
+
     this.status = 'connecting';
     this.error = null;
     this.latestQrText = null;
@@ -37,7 +48,10 @@ class WhatsAppService {
         const sock = makeWASocket({
           auth: state,
           printQRInTerminal: false,
-          browser: ['NutraflowCRM', 'Desktop', '1.0']
+          browser: ['NutraflowCRM', 'Desktop', '1.0'],
+          connectTimeoutMs: 60000,
+          defaultQueryTimeoutMs: 60000,
+          keepAliveIntervalMs: 30000
         });
 
         // Persist credentials to Supabase when Baileys emits updates
@@ -95,8 +109,17 @@ class WhatsAppService {
             console.warn('WhatsApp socket closed:', statusCode, reason);
             this.socket = null;
             this.initPromise = null;
-            this.latestQrText = null;
-            this.latestQrDataUrl = null;
+            
+            const loggedOut = statusCode === baileys.DisconnectReason?.loggedOut || statusCode === 401;
+            if (!loggedOut && !this.isResetting) {
+              console.log(`Auto-reconnect triggered: socket closed with status ${statusCode}. Reconnecting in 5s...`);
+              setTimeout(() => {
+                this.initialize().catch((err) => console.error('Error in WhatsApp auto-reconnect:', err));
+              }, 5000);
+            } else {
+              this.latestQrText = null;
+              this.latestQrDataUrl = null;
+            }
           }
         });
 
@@ -238,11 +261,21 @@ class WhatsAppService {
     if (this.status === 'connected' || this.status === 'open') {
       return null;
     }
-    const qrText = await this.waitForQr(timeoutMs);
-    return this.buildQrDataUrl(qrText);
+    // Si no hay un socket activo ni se está intentando conectar, no bloqueamos esperando el QR
+    if (!this.socket && this.status !== 'connecting') {
+      return null;
+    }
+    try {
+      const qrText = await this.waitForQr(timeoutMs);
+      return this.buildQrDataUrl(qrText);
+    } catch (err: any) {
+      console.warn('[WhatsAppService] Timeout o error al esperar QR:', err?.message || err);
+      return null;
+    }
   }
 
   public async reset() {
+    this.isResetting = true;
     if (this.socket && typeof this.socket.logout === 'function') {
       await this.socket.logout().catch(() => {});
     }
@@ -260,6 +293,10 @@ class WhatsAppService {
     this.status = 'restarting';
     this.error = null;
     this.rejectQrWaiters(new Error('WhatsApp service reset'));
+    
+    setTimeout(() => {
+      this.isResetting = false;
+    }, 1000);
   }
 }
 

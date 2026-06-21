@@ -3,8 +3,18 @@ import { whatsappService } from '@/lib/whatsapp-service';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
   console.log('[api/whatsapp] GET called');
+  const { searchParams } = new URL(request.url);
+  const statusOnly = searchParams.get('statusOnly') === 'true';
+
+  if (statusOnly) {
+    return NextResponse.json({ 
+      success: true, 
+      status: whatsappService.status ?? 'disconnected' 
+    });
+  }
+
   try {
     await whatsappService.initialize();
   } catch (initErr: any) {
