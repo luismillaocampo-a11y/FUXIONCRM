@@ -28,6 +28,41 @@ export default function CRMDashboard() {
   const [newMessageAlert, setNewMessageAlert] = useState(false);
   const chatContainerRef = React.useRef<HTMLDivElement>(null);
   const chatCountRef = React.useRef(0);
+  const lastScrolledLeadIdRef = React.useRef<string | null>(null);
+
+  // Scroll automático al fondo del chat estilo WhatsApp
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container || chatMessages.length === 0) return;
+
+    const currentLeadId = selectedLead?.id || null;
+    const isNewConversation = lastScrolledLeadIdRef.current !== currentLeadId;
+
+    if (isNewConversation) {
+      lastScrolledLeadIdRef.current = currentLeadId;
+      // Scroll inmediato al fondo al cambiar de chat
+      setTimeout(() => {
+        container.scrollTop = container.scrollHeight;
+      }, 50);
+      return;
+    }
+
+    // Si hay un nuevo mensaje, scroll suave condicional
+    const lastMessage = chatMessages[chatMessages.length - 1];
+    const isSentByUs = lastMessage?.sender === 'agent' || lastMessage?.sender === 'bot';
+    
+    // Tolerancia de 150px del fondo
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 150;
+
+    if (isSentByUs || isAtBottom) {
+      setTimeout(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth'
+        });
+      }, 50);
+    }
+  }, [chatMessages, selectedLead]);
   
   // Búsqueda y Filtros
   const [leadsSearch, setLeadsSearch] = useState('');
