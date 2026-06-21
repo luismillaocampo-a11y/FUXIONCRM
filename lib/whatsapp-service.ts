@@ -22,7 +22,26 @@ class WhatsAppService {
   private isResetting = false;
 
   public async initialize(force: boolean = false) {
-    if (this.socket) return;
+    if (force) {
+      console.log('[WhatsAppService] Inicialización forzada. Desconectando sockets y promesas anteriores...');
+      if (this.socket) {
+        try {
+          this.socket.end();
+        } catch (e) {}
+        this.socket = null;
+      }
+      this.initPromise = null;
+    }
+
+    if (this.socket) {
+      console.log('[WhatsAppService] Socket existente detectado en memoria. Desconectando para asegurar una única sesión activa...');
+      try {
+        this.socket.end();
+      } catch (e) {}
+      this.socket = null;
+      this.initPromise = null;
+    }
+
     if (this.initPromise) return this.initPromise;
 
     const now = Date.now();

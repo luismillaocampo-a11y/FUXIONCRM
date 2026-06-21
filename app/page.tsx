@@ -1408,17 +1408,42 @@ export default function CRMDashboard() {
             </p>
             <div className="mt-4 flex gap-2 justify-end">
               <button
-                onClick={() => {
-                  fetch('/api/leads')
-                    .then(res => res.json())
-                    .then(leadsData => {
-                      const list = Array.isArray(leadsData) ? leadsData : [];
-                      const targetLead = list.find((l: any) => l.id === activeNotification.leadId);
-                      if (targetLead) {
-                        setSelectedLead(targetLead);
+                onClick={async () => {
+                  const leadId = activeNotification.leadId;
+                  const senderName = activeNotification.senderName;
+                  try {
+                    const res = await fetch('/api/leads');
+                    const leadsData = await res.json();
+                    const list = Array.isArray(leadsData) ? leadsData : [];
+                    let targetLead = list.find((l: any) => l.id === leadId);
+
+                    if (!targetLead) {
+                      console.log('Creando lead de forma automática desde notificación:', leadId);
+                      const createRes = await fetch('/api/leads', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          id: leadId,
+                          name: senderName || `Cliente (+${leadId})`,
+                          phone: leadId,
+                          status: 'New',
+                          tags: [],
+                          bot_active: true
+                        })
+                      });
+                      const createData = await createRes.json();
+                      if (createData && createData.success) {
+                        targetLead = createData.lead;
+                        fetchData();
                       }
-                    })
-                    .catch(err => console.error(err));
+                    }
+
+                    if (targetLead) {
+                      setSelectedLead(targetLead);
+                    }
+                  } catch (err) {
+                    console.error('Error al responder desde la notificación:', err);
+                  }
                   setActiveNotification(null);
                 }}
                 className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-md shadow-emerald-500/10"

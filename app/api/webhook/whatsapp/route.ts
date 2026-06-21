@@ -159,20 +159,35 @@ export async function POST(request: Request) {
     }
 
     const fromMe = key.fromMe ?? false;
-    const remoteJid = key.remoteJid || '';
+    
+    // Resolve clean phone number from JIDs
+    const phoneFromKey = getPhoneFromWhatsappId(data?.key?.remoteJid || key?.remoteJid || '');
+    const phoneFromSender = getPhoneFromWhatsappId(data?.sender || body?.sender || '');
 
-    // Ignore status updates, broadcast lists, and group chats
+    let phone = '';
+    if (fromMe) {
+      phone = phoneFromKey || '';
+    } else {
+      if (phoneFromKey && phoneFromKey.startsWith('1415') && phoneFromSender && !phoneFromSender.startsWith('1415')) {
+        phone = phoneFromSender;
+      } else {
+        phone = phoneFromKey || phoneFromSender || '';
+      }
+    }
+
+    // Ignore group chats, status, or empty phone
+    const remoteJid = data?.key?.remoteJid || key?.remoteJid || '';
     if (remoteJid === 'status@broadcast' || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@g.us')) {
       console.log('[webhook/whatsapp] Ignored: Group, broadcast or status message');
       return NextResponse.json({ success: true, message: 'Ignored: Group or broadcast message' });
     }
 
-    const phone = getPhoneFromWhatsappId(remoteJid);
     if (!phone) {
-      console.log('[webhook/whatsapp] Ignored: Could not extract phone number from remoteJid:', remoteJid);
+      console.log('[webhook/whatsapp] Ignored: Could not extract phone number from payload');
       return NextResponse.json({ success: true, message: 'Ignored: Invalid phone number' });
     }
 
+    // After resolving, if the final phone number is still a 1415 test number, ignore it!
     if (phone.startsWith('1415')) {
       console.log('[webhook/whatsapp] Ignored: Test number starting with 1415:', phone);
       return NextResponse.json({ success: true, message: 'Ignored: Test number' });
