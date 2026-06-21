@@ -1,18 +1,25 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { queryKnowledgeBase } from '@/lib/gemini';
 import { alertKnowledgeGap, alertPaymentVerification } from '@/lib/notifications';
 import { whatsappService } from '@/lib/whatsapp-service';
 
+export const dynamic = 'force-dynamic';
+
 // Initialize Supabase Client with Service Key to bypass RLS policies
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+let cachedSupabase: SupabaseClient | null = null;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.warn('[webhook/whatsapp] Warning: Supabase URL or Service Key is missing. Webhook database operations might fail.');
+function getSupabaseClient() {
+  if (!cachedSupabase) {
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.warn('[webhook/whatsapp] Warning: Supabase URL or Service Key is missing. Webhook database operations might fail.');
+    }
+    cachedSupabase = createClient(supabaseUrl, supabaseServiceKey);
+  }
+  return cachedSupabase;
 }
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 /**
  * Extracts phone digits from a WhatsApp ID.
@@ -134,6 +141,7 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   console.log('[webhook/whatsapp] POST called');
+  const supabase = getSupabaseClient();
   try {
     const body = await request.json();
 
