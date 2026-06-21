@@ -1,6 +1,5 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { X, Send, User, Bot, UserCheck } from 'lucide-react';
 
@@ -13,11 +12,9 @@ export default function CRMDashboard() {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [typedMessage, setTypedMessage] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
-      setErrorMsg(null);
       const [leadsRes, gapsRes, kbRes] = await Promise.all([
         fetch('/api/leads'),
         fetch('/api/knowledge/gap'),
@@ -26,64 +23,36 @@ export default function CRMDashboard() {
       setLeads(await leadsRes.json());
       setGaps(await gapsRes.json());
       setKbItems(await kbRes.json());
-    } catch (err: any) {
-      setErrorMsg(err.message);
+    } catch (err) {
+      console.error('Error cargando datos:', err);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  // --- NUEVO USEEFFECT CORREGIDO DENTRO DEL COMPONENTE ---
   useEffect(() => {
     if (!selectedLead) {
       setChatMessages([]);
       return;
     }
-
-    let cancelled = false;
-
     const fetchMessages = async () => {
-      try {
-        const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(selectedLead.id)}`);
-        const data = await res.json();
-        if (!cancelled && Array.isArray(data)) {
-          setChatMessages(data);
-        }
-      } catch (err) {
-        console.error('Error cargando mensajes:', err);
-      }
+      const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(selectedLead.id)}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setChatMessages(data);
     };
-
     fetchMessages();
 
-    let channel: any = null;
+    const channel = supabaseBrowser
+      ?.channel(`chat_${selectedLead.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload: any) => {
+        if (payload.new.lead_id === selectedLead.id) {
+          setChatMessages((prev) => [...prev, payload.new]);
+        }
+      })
+      .subscribe();
 
-    if (supabaseBrowser) {
-      channel = supabaseBrowser
-        .channel(`chat_${selectedLead.id}`)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'chat_messages' },
-          (payload: any) => {
-            const incoming = payload.new;
-            if (incoming.lead_id === selectedLead.id) {
-              setChatMessages((prev) => [...prev, incoming]);
-            }
-          }
-        )
-        .subscribe();
-    }
-
-    return () => {
-      cancelled = true;
-      if (channel && supabaseBrowser) {
-        supabaseBrowser.removeChannel(channel);
-      }
-    };
+    return () => { supabaseBrowser?.removeChannel(channel!); };
   }, [selectedLead]);
-  // -------------------------------------------------------
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,10 +67,57 @@ export default function CRMDashboard() {
     setChatLoading(false);
   };
 
-  // ... (aquí mantienes todo el resto de tu return actual) ...
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0c0f1d] text-white p-8">
-      {/* ... mantén tu HTML original aquí ... */}
+      <header className="flex justify-between items-center mb-8">
+        <h2 className="text-xl font-bold">Panel de Control</h2>
+        <div className="flex gap-2">
+          {(['leads', 'gaps', 'kb'] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded ${activeTab === tab ? 'bg-slate-700' : 'bg-slate-900'}`}>
+              {tab.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {activeTab === 'leads' && (
+        <div className="flex gap-6 flex-1 min-h-0">
+          <div className="flex-1 overflow-x-auto">
+            <table className="w-full text-left">
+              <thead><tr className="text-slate-400"><th>Nombre</th><th>Teléfono</th></tr></thead>
+              <tbody>
+                {leads.map(lead => (
+                  <tr key={lead.id} onClick={() => setSelectedLead(lead)} className="border-b border-slate-800 cursor-pointer hover:bg-slate-800">
+                    <td className="py-4">{lead.name}</td><td>{lead.phone}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {selectedLead && (
+            <div className="w-96 flex flex-col border border-slate-700 rounded-lg bg-slate-900/50">
+              <div className="p-4 border-b border-slate-700 flex justify-between">
+                <h3 className="font-semibold">{selectedLead.name}</h3>
+                <button onClick={() => setSelectedLead(null)}><X size={18} /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {chatMessages.map((msg) => (
+                  <div key={msg.id} className={`flex gap-2 ${msg.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${msg.sender === 'customer' ? 'bg-indigo-600' : 'bg-slate-800'}`}>
+                      {msg.message}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-700 flex gap-2">
+                <input value={typedMessage} onChange={(e) => setTypedMessage(e.target.value)} className="flex-1 bg-slate-800 rounded px-3 py-2" placeholder="Escribe..." />
+                <button type="submit" disabled={chatLoading} className="bg-indigo-600 px-3 py-2 rounded"><Send size={18} /></button>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
