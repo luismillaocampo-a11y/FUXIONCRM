@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Required for Supabase Realtime postgres_changes on chat_messages
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+
 -- WhatsApp Sessions Table (stores auth state for Baileys)
 CREATE TABLE IF NOT EXISTS whatsapp_sessions (
     id TEXT PRIMARY KEY,
