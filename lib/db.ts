@@ -166,7 +166,7 @@ function getSqliteDb() {
 }
 
 // Supabase Client instance (initialize conditionally to prevent build-time crashes when variables are not configured yet)
-let supabase: any = (useSupabase && supabaseUrl && supabaseAnonKey) 
+export let supabase: any = (useSupabase && supabaseUrl && supabaseAnonKey) 
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
 

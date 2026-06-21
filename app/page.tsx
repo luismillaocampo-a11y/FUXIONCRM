@@ -1,5 +1,5 @@
 'use client';
-
+import { supabase } from '@/lib/db';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
@@ -105,45 +105,37 @@ export default function CRMDashboard() {
       setNewMessageAlert(false);
     }
 useEffect(() => {
-    const leadId = selectedLead?.id;
-    if (!leadId) return;
+  const leadId = selectedLead?.id;
+  if (!leadId) return;
 
-    console.log("Conectando canal para el lead:", leadId);
+  console.log("Iniciando conexión Realtime para el lead:", leadId);
 
-    const channel = supabase
-      .channel(`chat_messages_lead_${leadId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `lead_id=eq.${leadId}`
-        },
-        (payload) => {
-          const newMessage = payload.new;
-          console.log("¡Mensaje nuevo recibido!", newMessage);
-          
-          setChatMessages((prev) => {
-            // Evitar duplicados
-            if (prev.some((msg) => msg.id === newMessage.id)) return prev;
-            return [...prev, newMessage];
-          });
-        }
-      )
-      .subscribe((status) => {
-        console.log("Estado de la suscripción:", status);
-      });
+  const channel = supabase
+    .channel(`chat_messages_lead_${leadId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: `lead_id=eq.${leadId}`
+      },
+      (payload) => {
+        console.log("¡MENSAJE RECIBIDO POR SUPABASE REALTIME!", payload.new);
+        setChatMessages((prev) => {
+          if (prev.some((msg) => msg.id === payload.new.id)) return prev;
+          return [...prev, payload.new];
+        });
+      }
+    )
+    .subscribe((status) => {
+      console.log("Estado de la suscripción Realtime:", status);
+    });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [selectedLead?.id, supabase]);
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [selectedLead?.id]); // Solo se reconecta si cambia el lead
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [selectedLead?.id, supabase]);// Solo se reconecta si cambia el lead
       pollInterval = setInterval(async () => {
         try {
           const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
