@@ -2,12 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabaseBrowser } from '@/lib/supabase-browser';
-import { 
-  Search, Plus, X, Send, User, Bot, MessageSquare, 
-  Trash2, Upload, FileText, Image, Video, HelpCircle, 
-  AlertCircle, CheckCircle2, UserCheck, ToggleLeft, ToggleRight,
-  RefreshCw, FileCode, Check, Clock
-} from 'lucide-react';
+import { X, Send, User, Bot, UserCheck } from 'lucide-react';
 
 export default function CRMDashboard() {
   const [activeTab, setActiveTab] = useState<'leads' | 'gaps' | 'kb'>('leads');
@@ -60,43 +55,46 @@ export default function CRMDashboard() {
 
     fetchMessages();
 
-    if (!supabaseBrowser) {
-      console.warn('[Realtime] supabaseBrowser is null — check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
-      return;
-    }
+    let channel: any = null;
 
-    const channel = supabaseBrowser
-      .channel(`chat_${selectedLead.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `lead_id=eq.${selectedLead.id}`,
-        },
-        (payload) => {
-          console.log('[Realtime] postgres_changes INSERT received:', payload);
-          const incoming = payload.new as { id?: string };
-          setChatMessages((prev) => {
-            if (incoming.id && prev.some((m) => m.id === incoming.id)) return prev;
-            return [...prev, payload.new];
-          });
-        }
-      )
-      .subscribe((status, err) => {
-        console.log('[Realtime] subscription status:', status, err ?? '');
-        if (status === 'SUBSCRIBED') {
-          console.log('[Realtime] listening on chat_messages where lead_id=eq.' + selectedLead.id);
-        }
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error('[Realtime] subscription failed:', status, err);
-        }
-      });
+    if (supabaseBrowser) {
+      channel = supabaseBrowser
+        .channel(`chat_${selectedLead.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'chat_messages',
+            filter: `lead_id=eq.${selectedLead.id}`,
+          },
+          (payload) => {
+            console.log('[Realtime] postgres_changes INSERT received:', payload);
+            const incoming = payload.new as { id?: string };
+            setChatMessages((prev) => {
+              if (incoming.id && prev.some((m) => m.id === incoming.id)) return prev;
+              return [...prev, payload.new];
+            });
+          }
+        )
+        .subscribe((status, err) => {
+          console.log('[Realtime] subscription status:', status, err ?? '');
+          if (status === 'SUBSCRIBED') {
+            console.log('[Realtime] listening on chat_messages where lead_id=eq.' + selectedLead.id);
+          }
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.error('[Realtime] subscription failed:', status, err);
+          }
+        });
+    } else {
+      console.warn('[Realtime] supabaseBrowser is null — check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    }
 
     return () => {
       cancelled = true;
-      supabaseBrowser.removeChannel(channel);
+      if (channel && supabaseBrowser) {
+        supabaseBrowser.removeChannel(channel);
+      }
     };
   }, [selectedLead]);
 
