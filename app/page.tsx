@@ -29,6 +29,20 @@ export default function CRMDashboard() {
   const chatContainerRef = React.useRef<HTMLDivElement>(null);
   const chatCountRef = React.useRef(0);
   const lastScrolledLeadIdRef = React.useRef<string | null>(null);
+  const selectedLeadRef = React.useRef<any>(null);
+
+  // Notificación flotante de nuevos mensajes
+  const [activeNotification, setActiveNotification] = useState<{
+    id: string;
+    senderName: string;
+    message: string;
+    leadId: string;
+  } | null>(null);
+
+  // Sincronizar selectedLeadRef
+  useEffect(() => {
+    selectedLeadRef.current = selectedLead;
+  }, [selectedLead]);
 
   // Scroll automático al fondo del chat estilo WhatsApp
   useEffect(() => {
@@ -128,6 +142,14 @@ export default function CRMDashboard() {
       } catch (waErr) {
         console.error('Error fetching WhatsApp status:', waErr);
       }
+
+      // Mantener seleccionado el lead con los datos frescos
+      if (selectedLeadRef.current && Array.isArray(leadsData)) {
+        const freshLead = leadsData.find((l: any) => l.id === selectedLeadRef.current.id);
+        if (freshLead) {
+          setSelectedLead(freshLead);
+        }
+      }
     } catch (err: any) {
       console.error('Error cargando datos:', err);
       setErrorMsg(err.message || 'Error al conectar con la base de datos.');
@@ -155,6 +177,129 @@ export default function CRMDashboard() {
     fetchWAStatus();
     const interval = setInterval(fetchWAStatus, 15000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Reproducir sonido sintetizado de notificación (dos beeps en frecuencia agradable)
+  const playNotificationSound = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.type = 'sine';
+      
+      // bip 1
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      
+      // bip 2 rápido
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1); // A5
+      
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc.stop(ctx.currentTime + 0.35);
+    } catch (e) {
+      console.error('Failed to play notification audio:', e);
+    }
+  };
+
+  // Temporizador para ocultar la notificación flotante
+  useEffect(() => {
+    if (!activeNotification) return;
+    const timer = setTimeout(() => {
+      setActiveNotification(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [activeNotification]);
+
+  // Suscribirse a cambios en tiempo real en la tabla de leads
+  useEffect(() => {
+    const client = supabaseBrowser;
+    if (!client) return;
+
+    const channel = client
+      .channel('realtime_leads_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leads'
+        },
+        (payload: any) => {
+          console.log('👥 Cambio detectado en leads en tiempo real:', payload);
+          fetchData();
+        }
+      )
+      .subscribe((status) => {
+        console.log('🔗 Estado canal leads Realtime:', status);
+      });
+
+    return () => {
+      client.removeChannel(channel);
+    };
+  }, []);
+
+  // Suscribirse a mensajes entrantes globales para alertas
+  useEffect(() => {
+    const client = supabaseBrowser;
+    if (!client) return;
+
+    const channel = client
+      .channel('realtime_global_messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages'
+        },
+        (payload: any) => {
+          const newMsg = payload.new;
+          if (!newMsg || newMsg.sender !== 'customer') return;
+
+          // Reproducir bip sonoro
+          playNotificationSound();
+
+          // Encontrar nombre del lead para la alerta
+          fetch('/api/leads')
+            .then(res => res.json())
+            .then(leadsData => {
+              const list = Array.isArray(leadsData) ? leadsData : [];
+              const senderLead = list.find((l: any) => l.id === newMsg.lead_id);
+              const senderName = senderLead ? senderLead.name : `Cliente (+${newMsg.lead_id})`;
+              
+              // Disparar banner flotante
+              setActiveNotification({
+                id: `notif-${Date.now()}`,
+                senderName,
+                message: newMsg.message,
+                leadId: newMsg.lead_id
+              });
+            })
+            .catch(() => {
+              setActiveNotification({
+                id: `notif-${Date.now()}`,
+                senderName: `Cliente (+${newMsg.lead_id})`,
+                message: newMsg.message,
+                leadId: newMsg.lead_id
+              });
+            });
+        }
+      )
+      .subscribe((status) => {
+        console.log('🔗 Estado canal mensajes global Realtime:', status);
+      });
+
+    return () => {
+      client.removeChannel(channel);
+    };
   }, []);
 
   // Cargar mensajes cuando cambia el cliente seleccionado
@@ -412,15 +557,20 @@ export default function CRMDashboard() {
     e.preventDefault();
     if (!newLeadName.trim() || !newLeadPhone.trim()) return;
 
+    const cleanPhone = newLeadPhone.replace(/\D/g, '');
+    if (!cleanPhone) {
+      alert('Por favor, ingresa un número de teléfono válido.');
+      return;
+    }
+
     try {
-      const id = `lead-${Date.now()}`;
       await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id,
-          name: newLeadName,
-          phone: newLeadPhone,
+          id: cleanPhone,
+          name: newLeadName.trim(),
+          phone: cleanPhone,
           status: 'New',
           tags: [],
           bot_active: true
@@ -1241,6 +1391,45 @@ export default function CRMDashboard() {
                 Crear Cliente e Iniciar Conversación
               </button>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Notificación flotante de nuevos mensajes */}
+      {activeNotification && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-2xl border border-emerald-500/30 bg-slate-950/95 p-4 shadow-2xl shadow-emerald-500/10 animate-slide-in flex items-start gap-3 backdrop-blur-md">
+          <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+            <MessageSquare className="h-4 w-4 animate-bounce" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="text-xs font-bold text-emerald-400 block">¡Nuevo Mensaje!</span>
+            <span className="text-xs font-semibold text-white block mt-0.5 truncate">{activeNotification.senderName}</span>
+            <p className="text-xs text-slate-300 mt-1 line-clamp-2 italic">"{activeNotification.message}"</p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  fetch('/api/leads')
+                    .then(res => res.json())
+                    .then(leadsData => {
+                      const list = Array.isArray(leadsData) ? leadsData : [];
+                      const targetLead = list.find((l: any) => l.id === activeNotification.leadId);
+                      if (targetLead) {
+                        setSelectedLead(targetLead);
+                      }
+                    })
+                    .catch(err => console.error(err));
+                  setActiveNotification(null);
+                }}
+                className="px-2.5 py-1 text-[10px] font-bold rounded bg-emerald-500 hover:bg-emerald-600 text-white transition-all"
+              >
+                Responder
+              </button>
+              <button
+                onClick={() => setActiveNotification(null)}
+                className="px-2.5 py-1 text-[10px] font-bold rounded bg-slate-800 hover:bg-slate-700 text-slate-400 transition-all"
+              >
+                Descartar
+              </button>
+            </div>
           </div>
         </div>
       )}

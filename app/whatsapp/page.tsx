@@ -98,44 +98,81 @@ export default function WhatsAppPage() {
           </p>
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              onClick={async () => {
-                setLoading(true);
-                setError(null);
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  setLoading(true);
+                  setError(null);
 
-                try {
-                  const refreshResponse = await fetch('/api/whatsapp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'refresh' })
-                  });
-
-                  const refreshData = await refreshResponse.json();
-                  if (!refreshResponse.ok || !refreshData.success) {
-                    throw new Error(refreshData?.error || refreshData?.message || 'No se pudo reiniciar la sesión');
-                  }
-
-                  if (refreshData?.qrcode) {
-                    setSession({
-                      status: refreshData?.status ?? 'connecting',
-                      qrCode: refreshData.qrcode
+                  try {
+                    const refreshResponse = await fetch('/api/whatsapp', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'refresh' })
                     });
-                  }
 
-                  stopAllPolling();
-                  pollRef.current = window.setInterval(() => fetchQrSession({ single: true }), 2000);
-                } catch (err: any) {
-                  setError(err.message || 'Error inesperado');
-                } finally {
-                  setLoading(false);
-                }
-              }}
-              disabled={loading}
-              className="inline-flex items-center justify-center rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? 'Generando QR...' : 'Generar código QR'}
-            </button>
+                    const refreshData = await refreshResponse.json();
+                    if (!refreshResponse.ok || !refreshData.success) {
+                      throw new Error(refreshData?.error || refreshData?.message || 'No se pudo reiniciar la sesión');
+                    }
+
+                    if (refreshData?.qrcode) {
+                      setSession({
+                        status: refreshData?.status ?? 'connecting',
+                        qrCode: refreshData.qrcode
+                      });
+                    }
+
+                    stopAllPolling();
+                    pollRef.current = window.setInterval(() => fetchQrSession({ single: true }), 2000);
+                  } catch (err: any) {
+                    setError(err.message || 'Error inesperado');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+                className="inline-flex items-center justify-center rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? 'Generando QR...' : 'Generar código QR'}
+              </button>
+
+              {isConnected && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!confirm('¿Estás seguro de que deseas cerrar la sesión de WhatsApp y desconectar el dispositivo?')) return;
+                    setLoading(true);
+                    setError(null);
+                    try {
+                      const closeResponse = await fetch('/api/whatsapp', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'close' })
+                      });
+                      const closeData = await closeResponse.json();
+                      if (!closeResponse.ok || !closeData.success) {
+                        throw new Error(closeData?.error || closeData?.message || 'No se pudo cerrar la sesión');
+                      }
+                      setSession({
+                        status: 'disconnected',
+                        qrCode: null
+                      });
+                      stopAllPolling();
+                    } catch (err: any) {
+                      setError(err.message || 'Error al cerrar sesión');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading}
+                  className="inline-flex items-center justify-center rounded-xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cerrar Sesión de WhatsApp
+                </button>
+              )}
+            </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-3 text-sm">
               <div className="text-slate-400 uppercase tracking-[0.2em] text-[10px] mb-1">Estado</div>

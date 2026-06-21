@@ -13,16 +13,22 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { id, name, phone, status, tags, bot_active } = body;
+    let { id, name, phone, status, tags, bot_active } = body;
 
-    if (!id) {
+    // Clean phone number to digits only (e.g. remove "+", spaces, dashes)
+    const cleanPhone = phone ? phone.toString().replace(/\D/g, '') : '';
+    
+    // Standardize ID to be the clean phone number if it's a new lead (starts with lead-)
+    const cleanId = (id && id.toString().startsWith('lead-') && cleanPhone) ? cleanPhone : id;
+
+    if (!cleanId) {
       return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
     }
 
     const updatedLead = await db.upsertLead({
-      id,
+      id: cleanId,
       name,
-      phone,
+      phone: cleanPhone || phone,
       status,
       tags,
       bot_active
