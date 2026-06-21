@@ -20,9 +20,13 @@ export default function CRMDashboard() {
         fetch('/api/knowledge/gap'),
         fetch('/api/knowledge')
       ]);
-      setLeads(await leadsRes.json());
-      setGaps(await gapsRes.json());
-      setKbItems(await kbRes.json());
+      const leadsData = await leadsRes.json();
+      const gapsData = await gapsRes.json();
+      const kbData = await kbRes.json();
+      
+      setLeads(Array.isArray(leadsData) ? leadsData : []);
+      setGaps(Array.isArray(gapsData) ? gapsData : []);
+      setKbItems(Array.isArray(kbData) ? kbData : []);
     } catch (err) {
       console.error('Error cargando datos:', err);
     }
