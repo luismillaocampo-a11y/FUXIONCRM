@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { whatsappService } from '@/lib/whatsapp-service';
+import { db } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
@@ -12,6 +13,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Missing leadId or message' }, { status: 400 });
     }
 
+    // 1. Guardar en BD inmediatamente (Optimistic UI) para que aparezca al instante en la web
+    const tempMsgId = `web-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    try {
+      await db.addMessage(leadId, 'agent', message.toString().trim(), tempMsgId);
+    } catch (dbErr) {
+      console.error('[api/whatsapp/send] Error guardando mensaje optimista:', dbErr);
+    }
+
+    // 2. Enviar a WhatsApp
     await whatsappService.initialize();
     await whatsappService.sendMessageToLead(leadId, message.toString().trim());
 

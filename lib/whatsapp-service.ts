@@ -70,7 +70,6 @@ class WhatsAppService {
 
             // Si es un 'append' (eco de envío desde web o sincronización de celular), 
             // filtrar para SOLO procesar mensajes propios (fromMe: true).
-            // Esto evita insertar todo el historial antiguo de WhatsApp en la base de datos.
             let messagesToProcess = messageUpdate.messages;
             if (messageUpdate.type === 'append') {
                 messagesToProcess = messageUpdate.messages.filter((m: any) => m.key?.fromMe === true);
