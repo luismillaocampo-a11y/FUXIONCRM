@@ -63,6 +63,19 @@ export default function CRMDashboard() {
   const lastScrolledLeadIdRef = React.useRef<string | null>(null);
   const selectedLeadRef = React.useRef<any>(null);
   const forceScrollToBottomRef = React.useRef(false);
+  const statusTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const updateWhatsappStatusDebounced = (newStatus: string) => {
+    if (newStatus === 'connected' || newStatus === 'open') {
+      if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
+      setWhatsappStatus(newStatus);
+    } else {
+      if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
+      statusTimeoutRef.current = setTimeout(() => {
+        setWhatsappStatus(newStatus);
+      }, 5000);
+    }
+  };
 
   const isIdInAssociatedIds = (id: string) => {
     if (!selectedLead) return false;
@@ -182,7 +195,7 @@ export default function CRMDashboard() {
         const waStatusRes = await fetch('/api/whatsapp?statusOnly=true');
         const waStatusData = await waStatusRes.json();
         if (waStatusData && waStatusData.success) {
-          setWhatsappStatus(waStatusData.status);
+          updateWhatsappStatusDebounced(waStatusData.status);
         }
       } catch (waErr) {
         console.error('Error fetching WhatsApp status:', waErr);
@@ -212,7 +225,7 @@ export default function CRMDashboard() {
         const res = await fetch('/api/whatsapp?statusOnly=true');
         const data = await res.json();
         if (data && data.success) {
-          setWhatsappStatus(data.status);
+          updateWhatsappStatusDebounced(data.status);
         }
       } catch (err) {
         console.error('Error fetching WhatsApp status in poll:', err);
