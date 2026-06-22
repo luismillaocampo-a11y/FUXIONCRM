@@ -9,6 +9,37 @@ import {
   RefreshCw, FileCode, Check, Clock, Smile
 } from 'lucide-react';
 
+const IDENTITY_MAPPING: { [key: string]: string[] } = {
+  '51955252932': ['51955252932', '955252932'],
+  '955252932': ['51955252932', '955252932'],
+  '51900401930': ['51900401930', '900401930'],
+  '900401930': ['51900401930', '900401930']
+};
+
+function getAssociatedIds(lead: any): string[] {
+  if (!lead) return [];
+  const ids = new Set<string>();
+  ids.add(lead.id);
+  if (lead.phone) ids.add(lead.phone);
+  if (lead.whatsapp_lid) ids.add(lead.whatsapp_lid);
+
+  const staticEquivs = IDENTITY_MAPPING[lead.id] || (lead.phone && IDENTITY_MAPPING[lead.phone]);
+  if (staticEquivs) {
+    staticEquivs.forEach(id => ids.add(id));
+  }
+
+  const cleanPhone = lead.phone ? lead.phone.replace(/\D/g, '') : '';
+  if (cleanPhone) {
+    ids.add(cleanPhone);
+    const nineDigits = cleanPhone.startsWith('51') && cleanPhone.length > 2 ? cleanPhone.substring(2) : cleanPhone;
+    if (nineDigits.length === 9) {
+      ids.add(nineDigits);
+      ids.add('51' + nineDigits);
+    }
+  }
+  return Array.from(ids);
+}
+
 export default function CRMDashboard() {
   // Pestaña Activa
   const [activeTab, setActiveTab] = useState<'leads' | 'gaps' | 'kb'>('leads');
@@ -31,6 +62,12 @@ export default function CRMDashboard() {
   const chatCountRef = React.useRef(0);
   const lastScrolledLeadIdRef = React.useRef<string | null>(null);
   const selectedLeadRef = React.useRef<any>(null);
+
+  const isIdInAssociatedIds = (id: string) => {
+    if (!selectedLead) return false;
+    const associatedIds = getAssociatedIds(selectedLead);
+    return associatedIds.includes(id) || (id && associatedIds.map(x => x.replace(/\D/g, '')).includes(id.replace(/\D/g, '')));
+  };
 
   // Notificación flotante de nuevos mensajes
   const [activeNotification, setActiveNotification] = useState<{
@@ -272,11 +309,11 @@ export default function CRMDashboard() {
           if (!newMsg) return;
 
           // Si el chat está abierto para este cliente, procesamos el mensaje directamente
-          const isMsgForSelectedLead = selectedLeadRef.current && (
-            selectedLeadRef.current.id === newMsg.lead_id ||
-            selectedLeadRef.current.phone === newMsg.lead_id ||
-            (selectedLeadRef.current.whatsapp_lid && selectedLeadRef.current.whatsapp_lid === newMsg.lead_id)
-          );
+          const isMsgForSelectedLead = selectedLeadRef.current && (() => {
+            const associatedIds = getAssociatedIds(selectedLeadRef.current);
+            return associatedIds.includes(newMsg.lead_id) || 
+                   (newMsg.lead_id && associatedIds.map(id => id.replace(/\D/g, '')).includes(newMsg.lead_id.replace(/\D/g, '')));
+          })();
 
           if (isMsgForSelectedLead) {
             setChatMessages((prev) => {
@@ -1272,15 +1309,9 @@ export default function CRMDashboard() {
             {chatMessages
               .filter((msg) => {
                 if (!selectedLead) return false;
-                // Direct Line: bloquear al leadId exacto seleccionado y sus IDs de sesión directa
-                const directIds = [
-                  selectedLead.id,
-                  selectedLead.phone,
-                  selectedLead.whatsapp_lid
-                ].filter(Boolean);
-                const isMatch = directIds.includes(msg.lead_id) || 
-                                (msg.lead_id && directIds.map(id => id.replace(/\D/g, '')).includes(msg.lead_id.replace(/\D/g, '')));
-                console.log(`[UI Direct Line filter] msg.id: ${msg.id}, msg.lead_id: ${msg.lead_id}, directIds: ${JSON.stringify(directIds)}, matches: ${isMatch}`);
+                // Usar validación unificada por IDs asociados (LID + número real + asociados)
+                const isMatch = isIdInAssociatedIds(msg.lead_id);
+                console.log(`[UI filter] msg.id: ${msg.id}, msg.lead_id: ${msg.lead_id}, matches: ${isMatch}`);
                 return isMatch;
               })
               .map((msg) => {
