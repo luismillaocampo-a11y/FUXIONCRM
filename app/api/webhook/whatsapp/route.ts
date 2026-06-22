@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { queryKnowledgeBase } from '@/lib/gemini';
 import { alertKnowledgeGap, alertPaymentVerification } from '@/lib/notifications';
 import { whatsappService } from '@/lib/whatsapp-service';
+import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -144,6 +145,20 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   console.log('[webhook/whatsapp] POST called');
+  
+  // Si la sesión de Baileys local está activa en la base de datos, ignoramos el webhook externo.
+  // Baileys procesa directamente los mensajes en tiempo real vía websocket en whatsapp-service.ts.
+  try {
+    const session = await db.getWhatsappSession('default');
+    if (session && session.creds && session.creds.me && session.creds.me.id && !session.creds.me.id.startsWith('placeholder')) {
+      const activeLocalPhone = getPhoneFromWhatsappId(session.creds.me.id) || '';
+      console.log(`[webhook/whatsapp] Conexión local de Baileys activa (${activeLocalPhone}). Ignorando webhook externo.`);
+      return NextResponse.json({ success: true, message: 'Ignored: Local Baileys session is active' });
+    }
+  } catch (e) {
+    console.error('[webhook/whatsapp] Error al comprobar la sesión persistida:', e);
+  }
+
   const supabase = getSupabaseClient();
   try {
     const body = await request.json();
