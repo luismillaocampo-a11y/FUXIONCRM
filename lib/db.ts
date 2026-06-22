@@ -704,10 +704,24 @@ export const db = {
   },
 
   // --- CHAT MESSAGES ---
+  IDENTITY_MAPPING: {
+    '51999453361': ['51999453361', '51955252932', '955252932'],
+    '51955252932': ['51999453361', '51955252932', '955252932'],
+    '955252932': ['51999453361', '51955252932', '955252932'],
+    '51900401930': ['51900401930', '900401930'],
+    '900401930': ['51900401930', '900401930']
+  } as { [key: string]: string[] },
+
   async getAssociatedIds(leadId: string): Promise<string[]> {
     const ids = new Set<string>();
     ids.add(leadId);
     try {
+      // 1. Consultar tabla de equivalencias estática (Identity Mapping)
+      const staticEquivalents = this.IDENTITY_MAPPING[leadId] || this.IDENTITY_MAPPING[leadId.replace(/\D/g, '')];
+      if (staticEquivalents) {
+        staticEquivalents.forEach(id => ids.add(id));
+      }
+
       let lead = await this.getLeadById(leadId);
       if (!lead) {
         if (useSupabase) {
@@ -734,6 +748,17 @@ export const db = {
         if (lead.id) ids.add(lead.id);
         if (lead.phone) ids.add(lead.phone);
         if (lead.whatsapp_lid) ids.add(lead.whatsapp_lid);
+
+        // Agregar números normalizados para máxima compatibilidad
+        const cleanPhone = lead.phone ? lead.phone.replace(/\D/g, '') : '';
+        if (cleanPhone) {
+          ids.add(cleanPhone);
+          if (cleanPhone.startsWith('51') && cleanPhone.length > 2) {
+            ids.add(cleanPhone.substring(2));
+          } else {
+            ids.add('51' + cleanPhone);
+          }
+        }
       }
     } catch (e) {
       console.error('Error finding associated IDs:', e);
