@@ -167,16 +167,7 @@ export async function POST(request: Request) {
     const phoneFromKey = getPhoneFromWhatsappId(data?.key?.remoteJid || key?.remoteJid || '');
     const phoneFromSender = getPhoneFromWhatsappId(data?.sender || body?.sender || '');
 
-    let phone = '';
-    if (fromMe) {
-      phone = phoneFromKey || '';
-    } else {
-      if (phoneFromKey && phoneFromKey.startsWith('1415') && phoneFromSender && !phoneFromSender.startsWith('1415')) {
-        phone = phoneFromSender;
-      } else {
-        phone = phoneFromKey || phoneFromSender || '';
-      }
-    }
+    let phone = phoneFromKey || phoneFromSender || '';
 
     // Ignore group chats, status, or empty phone
     const remoteJid = data?.key?.remoteJid || key?.remoteJid || '';
@@ -188,12 +179,6 @@ export async function POST(request: Request) {
     if (!phone) {
       console.log('[webhook/whatsapp] Ignored: Could not extract phone number from payload');
       return NextResponse.json({ success: true, message: 'Ignored: Invalid phone number' });
-    }
-
-    // After resolving, if the final phone number is still a 1415 test number, ignore it!
-    if (phone.startsWith('1415')) {
-      console.log('[webhook/whatsapp] Ignored: Test number starting with 1415:', phone);
-      return NextResponse.json({ success: true, message: 'Ignored: Test number' });
     }
 
     const messageText = extractMessageText(messageObj);

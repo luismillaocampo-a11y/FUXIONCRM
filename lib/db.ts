@@ -296,8 +296,6 @@ export const db = {
       const res = await runSupabaseQuery((c) => 
         c.from('leads')
          .select('*')
-         .not('phone', 'like', '1415%')
-         .not('id', 'like', '1415%')
          .order('created_at', { ascending: false })
       );
       if (res && !res.error) return res.data || [];
@@ -305,7 +303,7 @@ export const db = {
     }
     {
       const db = getSqliteDb();
-      return db.prepare("SELECT * FROM leads WHERE phone NOT LIKE '1415%' AND id NOT LIKE '1415%' ORDER BY created_at DESC").all().map((l: any) => ({
+      return db.prepare("SELECT * FROM leads ORDER BY created_at DESC").all().map((l: any) => ({
         ...l,
         tags: JSON.parse(l.tags),
         bot_active: Boolean(l.bot_active)
@@ -332,11 +330,6 @@ export const db = {
   },
 
   async upsertLead(lead: { id: string; name: string; phone: string; status?: string; tags?: string[]; bot_active?: boolean }): Promise<any> {
-    // Ignore test numbers starting with 1415
-    if (lead.phone?.startsWith('1415') || lead.id?.startsWith('1415')) {
-      console.log('[db] Skipping upsert of test lead:', lead.phone);
-      return null;
-    }
 
     const status = lead.status || 'New';
     const tags = JSON.stringify(lead.tags || []);

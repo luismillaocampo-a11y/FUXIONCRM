@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { whatsappService } from '@/lib/whatsapp-service';
+import { db } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,21 @@ export async function GET(request: Request) {
   const statusOnly = searchParams.get('statusOnly') === 'true';
 
   if (statusOnly) {
+    if (!whatsappService.status || whatsappService.status === 'disconnected') {
+      try {
+        const session = await db.getWhatsappSession('default');
+        if (session && session.creds && session.creds.me && session.creds.me.id && !session.creds.me.id.startsWith('placeholder')) {
+          whatsappService.initialize().catch((err: any) => console.error('[api/whatsapp] Background auto-init error:', err));
+          return NextResponse.json({ 
+            success: true, 
+            status: 'connected'
+          });
+        }
+      } catch (dbErr: any) {
+        console.error('[api/whatsapp] Error checking persisted WhatsApp session:', dbErr);
+      }
+    }
+
     return NextResponse.json({ 
       success: true, 
       status: whatsappService.status ?? 'disconnected' 

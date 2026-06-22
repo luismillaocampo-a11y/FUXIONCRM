@@ -117,6 +117,7 @@ class WhatsAppService {
             console.warn('WhatsApp socket closed:', statusCode, reason);
             this.socket = null;
             this.initPromise = null;
+            this.status = 'disconnected';
             
             const loggedOut = statusCode === baileys.DisconnectReason?.loggedOut || statusCode === 401;
             
