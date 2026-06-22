@@ -65,9 +65,19 @@ class WhatsAppService {
         sock.ev.on('messages.upsert', async (messageUpdate: any) => {
           console.log("Mensaje crudo recibido:", JSON.stringify(messageUpdate, null, 2));
           try {
-            if (messageUpdate.type !== 'notify' || !Array.isArray(messageUpdate.messages)) return;
+            if (messageUpdate.type !== 'notify' && messageUpdate.type !== 'append') return;
+            if (!Array.isArray(messageUpdate.messages)) return;
 
-            for (const incoming of messageUpdate.messages) {
+            // Si es un 'append' (eco de envío desde web o sincronización de celular), 
+            // filtrar para SOLO procesar mensajes propios (fromMe: true).
+            // Esto evita insertar todo el historial antiguo de WhatsApp en la base de datos.
+            let messagesToProcess = messageUpdate.messages;
+            if (messageUpdate.type === 'append') {
+                messagesToProcess = messageUpdate.messages.filter((m: any) => m.key?.fromMe === true);
+                if (messagesToProcess.length === 0) return;
+            }
+
+            for (const incoming of messagesToProcess) {
               const key = incoming?.key || {};
               const message = incoming?.message;
               if (!message || (!key.remoteJid && !key.remoteJidAlt)) continue;
