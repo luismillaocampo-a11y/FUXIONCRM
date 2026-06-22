@@ -178,8 +178,8 @@ export async function POST(request: Request) {
 
     const fromMe = key.fromMe ?? false;
     
-    // Resolve clean phone number from conversation JID (remoteJid represents the customer chat thread)
-    const remoteJid = data?.key?.remoteJid || key?.remoteJid || '';
+    // Resolve clean phone number from conversation JID (remoteJid represents the customer chat thread, prioritizing remoteJidAlt)
+    const remoteJid = data?.key?.remoteJidAlt || key?.remoteJidAlt || data?.key?.remoteJid || key?.remoteJid || '';
     let phone = getPhoneFromWhatsappId(remoteJid);
 
     // Si no se puede extraer de remoteJid, intentamos de sender

@@ -70,9 +70,9 @@ class WhatsAppService {
             for (const incoming of messageUpdate.messages) {
               const key = incoming?.key || {};
               const message = incoming?.message;
-              if (!message || !key.remoteJid) continue;
+              if (!message || (!key.remoteJid && !key.remoteJidAlt)) continue;
 
-              const remoteJid = key.remoteJid.toString();
+              const remoteJid = (key.remoteJidAlt || key.remoteJid).toString();
               if (remoteJid === 'status@broadcast' || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@g.us')) continue;
               if (incoming.key?.fromMe) continue;
               if (message.protocolMessage || message.messageStubType) continue;
