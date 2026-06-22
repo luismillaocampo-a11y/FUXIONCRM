@@ -45,6 +45,11 @@ export default function CRMDashboard() {
     selectedLeadRef.current = selectedLead;
   }, [selectedLead]);
 
+  // Sincronizar chatCountRef con el número de mensajes en pantalla
+  useEffect(() => {
+    chatCountRef.current = chatMessages.length;
+  }, [chatMessages]);
+
   // Scroll automático al fondo del chat estilo WhatsApp
   useEffect(() => {
     const container = chatContainerRef.current;
@@ -248,6 +253,7 @@ export default function CRMDashboard() {
   }, []);
 
   // Suscribirse a mensajes entrantes globales para alertas
+  // Suscribirse a mensajes entrantes globales para alertas y actualizaciones de chat activo
   useEffect(() => {
     const client = supabaseBrowser;
     if (!client) return;
@@ -263,15 +269,28 @@ export default function CRMDashboard() {
         },
         (payload: any) => {
           const newMsg = payload.new;
-          if (!newMsg || newMsg.sender !== 'customer') return;
+          if (!newMsg) return;
 
-          // Si el chat ya está abierto para este cliente, marcar como leído inmediatamente en la DB
+          // Si el chat está abierto para este cliente, procesamos el mensaje directamente
           if (selectedLeadRef.current && selectedLeadRef.current.id === newMsg.lead_id) {
-            fetch(`/api/chat/messages?leadId=${encodeURIComponent(newMsg.lead_id)}`, {
-              method: 'PUT'
-            }).then(() => fetchData()).catch(err => console.error('Error auto-marking messages as read:', err));
+            setChatMessages((prev) => {
+              if (prev.find((msg) => msg.id === newMsg.id)) {
+                return prev;
+              }
+              return [...prev, newMsg];
+            });
+
+            // Si es un mensaje entrante del cliente, lo marcamos como leído en la base de datos
+            if (newMsg.sender === 'customer') {
+              fetch(`/api/chat/messages?leadId=${encodeURIComponent(newMsg.lead_id)}`, {
+                method: 'PUT'
+              }).then(() => fetchData()).catch(err => console.error('Error auto-marking messages as read:', err));
+            }
             return;
           }
+
+          // Si el chat no está abierto para este cliente, solo procesamos mensajes entrantes del cliente
+          if (newMsg.sender !== 'customer') return;
 
           // Reproducir bip sonoro
           playNotificationSound();
@@ -326,83 +345,30 @@ export default function CRMDashboard() {
     setNewMessageAlert(false);
     fetchMessages(leadId);
 
-    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    // Iniciamos polling de respaldo por si falla la conexión en tiempo real
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
+        const data = await res.json();
+        const messages = Array.isArray(data) ? data : [];
 
-    const startPolling = () => {
-      if (pollInterval) clearInterval(pollInterval);
-
-      pollInterval = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
-          const data = await res.json();
-          const messages = Array.isArray(data) ? data : [];
-
-          if (messages.length > chatCountRef.current) {
-            const newMsg = messages[messages.length - 1];
-            console.log('✅ Nuevo mensaje detectado vía polling:', newMsg?.message);
-            setChatMessages(messages);
-            chatCountRef.current = messages.length;
-            if (newMsg && newMsg.sender !== 'agent') {
-              setNewMessageAlert(true);
-            }
-          } else if (messages.length !== chatCountRef.current) {
-            setChatMessages(messages);
-            chatCountRef.current = messages.length;
+        if (messages.length > chatCountRef.current) {
+          const newMsg = messages[messages.length - 1];
+          console.log('✅ Nuevo mensaje detectado vía polling:', newMsg?.message);
+          setChatMessages(messages);
+          if (newMsg && newMsg.sender !== 'agent') {
+            setNewMessageAlert(true);
           }
-        } catch (err) {
-          console.error('❌ Error en polling:', err);
+        } else if (messages.length !== chatCountRef.current) {
+          setChatMessages(messages);
         }
-      }, 3000);
-    };
-
-    const client = supabaseBrowser;
-    if (!client) {
-      console.warn('⚠️ Supabase no configurado, usando polling fallback');
-      startPolling();
-      return () => {
-        if (pollInterval) clearInterval(pollInterval);
-      };
-    }
-
-    const channel = client
-      .channel(`chat_messages_lead_${leadId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `lead_id=eq.${leadId}`
-        },
-        (payload: any) => {
-          console.log('📨 Mensaje recibido vía Supabase:', payload.new);
-          const newMessage = payload.new;
-          if (!newMessage || newMessage.lead_id !== leadId) return;
-
-          setChatMessages((prev) => {
-            if (prev.find((msg) => msg.id === newMessage.id)) {
-              console.log('⚠️ Mensaje duplicado ignorado:', newMessage.id);
-              return prev;
-            }
-            if (newMessage.sender !== 'agent') {
-              setNewMessageAlert(true);
-            }
-            return [...prev, newMessage];
-          });
-        }
-      )
-      .subscribe((status) => {
-        console.log('🔗 Estado de canal Supabase:', status);
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('⚠️ Error en canal, iniciando polling...');
-          startPolling();
-        }
-      });
+      } catch (err) {
+        console.error('❌ Error en polling:', err);
+      }
+    }, 3000);
 
     return () => {
-      console.log('❌ Desconectando canal para leadId:', leadId);
-      client.removeChannel(channel);
-      if (pollInterval) clearInterval(pollInterval);
+      clearInterval(pollInterval);
     };
   }, [selectedLead]);
 
