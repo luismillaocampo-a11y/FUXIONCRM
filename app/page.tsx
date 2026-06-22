@@ -272,7 +272,13 @@ export default function CRMDashboard() {
           if (!newMsg) return;
 
           // Si el chat está abierto para este cliente, procesamos el mensaje directamente
-          if (selectedLeadRef.current && selectedLeadRef.current.id === newMsg.lead_id) {
+          const isMsgForSelectedLead = selectedLeadRef.current && (
+            selectedLeadRef.current.id === newMsg.lead_id ||
+            selectedLeadRef.current.phone === newMsg.lead_id ||
+            (selectedLeadRef.current.whatsapp_lid && selectedLeadRef.current.whatsapp_lid === newMsg.lead_id)
+          );
+
+          if (isMsgForSelectedLead) {
             setChatMessages((prev) => {
               if (prev.find((msg) => msg.id === newMsg.id)) {
                 return prev;
@@ -303,7 +309,11 @@ export default function CRMDashboard() {
             .then(res => res.json())
             .then(leadsData => {
               const list = Array.isArray(leadsData) ? leadsData : [];
-              const senderLead = list.find((l: any) => l.id === newMsg.lead_id);
+              const senderLead = list.find((l: any) => 
+                l.id === newMsg.lead_id || 
+                l.phone === newMsg.lead_id || 
+                (l.whatsapp_lid && l.whatsapp_lid === newMsg.lead_id)
+              );
               const senderName = senderLead ? senderLead.name : `Cliente (+${newMsg.lead_id})`;
               
               // Disparar banner flotante
@@ -311,7 +321,7 @@ export default function CRMDashboard() {
                 id: `notif-${Date.now()}`,
                 senderName,
                 message: newMsg.message,
-                leadId: newMsg.lead_id
+                leadId: senderLead ? senderLead.id : newMsg.lead_id
               });
             })
             .catch(() => {

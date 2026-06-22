@@ -704,15 +704,57 @@ export const db = {
   },
 
   // --- CHAT MESSAGES ---
+  async getAssociatedIds(leadId: string): Promise<string[]> {
+    const ids = new Set<string>();
+    ids.add(leadId);
+    try {
+      let lead = await this.getLeadById(leadId);
+      if (!lead) {
+        if (useSupabase) {
+          const res = await runSupabaseQuery((c) => 
+            c.from('leads')
+             .select('*')
+             .or(`phone.eq.${leadId},whatsapp_lid.eq.${leadId}`)
+             .maybeSingle()
+          );
+          if (res && !res.error && res.data) lead = res.data;
+        } else {
+          const sDb = getSqliteDb();
+          lead = sDb.prepare('SELECT * FROM leads WHERE phone = ? OR whatsapp_lid = ?').get(leadId, leadId);
+          if (lead) {
+            lead = {
+              ...lead,
+              tags: typeof lead.tags === 'string' ? JSON.parse(lead.tags) : lead.tags,
+              bot_active: Boolean(lead.bot_active)
+            };
+          }
+        }
+      }
+      if (lead) {
+        if (lead.id) ids.add(lead.id);
+        if (lead.phone) ids.add(lead.phone);
+        if (lead.whatsapp_lid) ids.add(lead.whatsapp_lid);
+      }
+    } catch (e) {
+      console.error('Error finding associated IDs:', e);
+    }
+    return Array.from(ids);
+  },
+
   async getMessages(leadId: string): Promise<any[]> {
+    const ids = await this.getAssociatedIds(leadId);
+    let messages: any[] = [];
     if (useSupabase) {
-      const { data, error } = await getSupabase().from('chat_messages').select('*').eq('lead_id', leadId).order('created_at', { ascending: true });
+      const { data, error } = await getSupabase().from('chat_messages').select('*').in('lead_id', ids).order('created_at', { ascending: true });
       if (error) throw error;
-      return data || [];
+      messages = data || [];
     } else {
       const db = getSqliteDb();
-      return db.prepare('SELECT * FROM chat_messages WHERE lead_id = ? ORDER BY created_at ASC').all(leadId);
+      const placeholders = ids.map(() => '?').join(',');
+      messages = db.prepare(`SELECT * FROM chat_messages WHERE lead_id IN (${placeholders}) ORDER BY created_at ASC`).all(...ids);
     }
+    console.log(`[db.getMessages] Búsqueda de mensajes para leadId: ${leadId}. IDs asociados: ${JSON.stringify(ids)}. Mensajes encontrados: ${messages.length}`);
+    return messages;
   },
 
   async addMessage(leadId: string, sender: string, message: string): Promise<any> {
@@ -738,26 +780,30 @@ export const db = {
   },
 
   async markMessagesAsRead(leadId: string): Promise<void> {
+    const ids = await this.getAssociatedIds(leadId);
     if (useSupabase) {
       const { error } = await getSupabase()
         .from('chat_messages')
         .update({ is_read: true })
-        .eq('lead_id', leadId)
+        .in('lead_id', ids)
         .eq('sender', 'customer');
       if (error) throw error;
     } else {
       const db = getSqliteDb();
-      db.prepare("UPDATE chat_messages SET is_read = 1 WHERE lead_id = ? AND sender = 'customer'").run(leadId);
+      const placeholders = ids.map(() => '?').join(',');
+      db.prepare(`UPDATE chat_messages SET is_read = 1 WHERE lead_id IN (${placeholders}) AND sender = 'customer'`).run(...ids);
     }
   },
 
   async deleteChatMessages(leadId: string): Promise<void> {
+    const ids = await this.getAssociatedIds(leadId);
     if (useSupabase) {
-      const { error } = await getSupabase().from('chat_messages').delete().eq('lead_id', leadId);
+      const { error } = await getSupabase().from('chat_messages').delete().in('lead_id', ids);
       if (error) throw error;
     } else {
       const db = getSqliteDb();
-      db.prepare('DELETE FROM chat_messages WHERE lead_id = ?').run(leadId);
+      const placeholders = ids.map(() => '?').join(',');
+      db.prepare(`DELETE FROM chat_messages WHERE lead_id IN (${placeholders})`).run(...ids);
     }
   },
 

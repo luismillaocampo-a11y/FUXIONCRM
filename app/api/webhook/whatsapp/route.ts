@@ -322,14 +322,8 @@ export async function POST(request: Request) {
     }
 
     // 4. Retrieve recent message history for AI context
-    const { data: historyData } = await supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('lead_id', leadId)
-      .order('created_at', { ascending: true })
-      .limit(10);
-
-    const history = (historyData || []).map((m: any) => ({
+    const historyMessages = await db.getMessages(leadId);
+    const history = historyMessages.slice(-10).map((m: any) => ({
       sender: m.sender,
       message: m.message
     }));
@@ -343,10 +337,7 @@ export async function POST(request: Request) {
       console.log(`[webhook/whatsapp] AI could not answer. Pausing bot and creating knowledge gap task.`);
       
       // Pause bot
-      await supabase
-        .from('leads')
-        .update({ bot_active: 0, updated_at: new Date().toISOString() })
-        .eq('id', leadId);
+      await db.updateLeadBotActive(leadId, false);
 
       // Determine appropriate status update
       let newStatus = activeLead.status || 'New';
@@ -357,10 +348,7 @@ export async function POST(request: Request) {
         newStatus = 'Engaged';
       }
 
-      await supabase
-        .from('leads')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', leadId);
+      await db.updateLeadStatus(leadId, newStatus);
 
       // Construct history snippet for knowledge gap context
       const contextSnippet = history
@@ -369,15 +357,7 @@ export async function POST(request: Request) {
         .join('\n');
 
       const gapId = `gap-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      await supabase
-        .from('knowledge_gaps')
-        .insert({
-          id: gapId,
-          lead_id: leadId,
-          question: messageText,
-          context: contextSnippet,
-          status: 'pending'
-        });
+      await db.addGap(gapId, leadId, messageText, contextSnippet);
 
       // Send email alert for Knowledge Gap
       await alertKnowledgeGap({
@@ -387,13 +367,7 @@ export async function POST(request: Request) {
 
       // Save fallback bot message
       const fallbackReply = 'Lo siento, no tengo esa información en este momento. Un agente humano revisará su pregunta y le responderá a la brevedad.';
-      const fallbackMsgId = `msg-bot-${Date.now()}`;
-      await supabase.from('chat_messages').insert({
-        id: fallbackMsgId,
-        lead_id: leadId,
-        sender: 'bot',
-        message: fallbackReply
-      });
+      await db.addMessage(leadId, 'bot', fallbackReply);
 
       // Reply back via WhatsApp
       await sendWhatsAppMessage(activeLead.phone || phone, fallbackReply);
@@ -407,13 +381,7 @@ export async function POST(request: Request) {
     }
 
     // 7. Save Bot Response to Logs
-    const botMsgId = `msg-bot-${Date.now()}`;
-    await supabase.from('chat_messages').insert({
-      id: botMsgId,
-      lead_id: leadId,
-      sender: 'bot',
-      message: reply
-    });
+    await db.addMessage(leadId, 'bot', reply);
 
     // 8. Reply back via WhatsApp
     await sendWhatsAppMessage(activeLead.phone || phone, reply);
@@ -423,10 +391,7 @@ export async function POST(request: Request) {
     const isPaymentTrigger = paymentKeywords.some(keyword => messageText.toLowerCase().includes(keyword));
 
     if (isPaymentTrigger && activeLead.status !== 'Pending Verification') {
-      await supabase
-        .from('leads')
-        .update({ status: 'Pending Verification', updated_at: new Date().toISOString() })
-        .eq('id', leadId);
+      await db.updateLeadStatus(leadId, 'Pending Verification');
 
       let currentTags: string[] = [];
       try {
@@ -437,10 +402,7 @@ export async function POST(request: Request) {
 
       if (!currentTags.includes('needs-verification')) {
         currentTags.push('needs-verification');
-        await supabase
-          .from('leads')
-          .update({ tags: JSON.stringify(currentTags), updated_at: new Date().toISOString() })
-          .eq('id', leadId);
+        await db.updateLeadTags(leadId, currentTags);
       }
 
       await alertPaymentVerification({
