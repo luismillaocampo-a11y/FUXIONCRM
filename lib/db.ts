@@ -705,9 +705,8 @@ export const db = {
 
   // --- CHAT MESSAGES ---
   IDENTITY_MAPPING: {
-    '51999453361': ['51999453361', '51955252932', '955252932'],
-    '51955252932': ['51999453361', '51955252932', '955252932'],
-    '955252932': ['51999453361', '51955252932', '955252932'],
+    '51955252932': ['51955252932', '955252932'],
+    '955252932': ['51955252932', '955252932'],
     '51900401930': ['51900401930', '900401930'],
     '900401930': ['51900401930', '900401930']
   } as { [key: string]: string[] },
@@ -749,14 +748,14 @@ export const db = {
         if (lead.phone) ids.add(lead.phone);
         if (lead.whatsapp_lid) ids.add(lead.whatsapp_lid);
 
-        // Agregar números normalizados para máxima compatibilidad
+        // Agregar números normalizados estrictamente vinculados al número de 9 dígitos del lead
         const cleanPhone = lead.phone ? lead.phone.replace(/\D/g, '') : '';
         if (cleanPhone) {
           ids.add(cleanPhone);
-          if (cleanPhone.startsWith('51') && cleanPhone.length > 2) {
-            ids.add(cleanPhone.substring(2));
-          } else {
-            ids.add('51' + cleanPhone);
+          const nineDigits = cleanPhone.startsWith('51') && cleanPhone.length > 2 ? cleanPhone.substring(2) : cleanPhone;
+          if (nineDigits.length === 9) {
+            ids.add(nineDigits);
+            ids.add('51' + nineDigits);
           }
         }
       }

@@ -114,7 +114,7 @@ export default function CRMDashboard() {
     try {
       setErrorMsg(null);
       
-      const leadsRes = await fetch('/api/leads');
+      const leadsRes = await fetch(`/api/leads?_t=${Date.now()}`, { cache: 'no-store' });
       const leadsData = await leadsRes.json();
       if (leadsData && leadsData.error) {
         setErrorMsg(leadsData.error);
@@ -305,7 +305,7 @@ export default function CRMDashboard() {
           fetchData();
 
           // Encontrar nombre del lead para la alerta
-          fetch('/api/leads')
+          fetch(`/api/leads?_t=${Date.now()}`, { cache: 'no-store' })
             .then(res => res.json())
             .then(leadsData => {
               const list = Array.isArray(leadsData) ? leadsData : [];
@@ -358,7 +358,7 @@ export default function CRMDashboard() {
     // Iniciamos polling de respaldo por si falla la conexión en tiempo real
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
+        const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}&_t=${Date.now()}`, { cache: 'no-store' });
         const data = await res.json();
         const messages = Array.isArray(data) ? data : [];
         console.log(`[UI pollInterval] leadId: ${leadId}, messages count: ${messages.length}`, messages);
@@ -385,7 +385,7 @@ export default function CRMDashboard() {
 
   const fetchMessages = async (leadId: string) => {
     try {
-      const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
+      const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}&_t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
       console.log(`[UI fetchMessages] leadId: ${leadId}, messages count: ${Array.isArray(data) ? data.length : 0}`, data);
       setChatMessages(Array.isArray(data) ? data : []);
@@ -419,7 +419,7 @@ export default function CRMDashboard() {
         });
 
         fetchData();
-        const updatedLeads = await (await fetch('/api/leads')).json();
+        const updatedLeads = await (await fetch(`/api/leads?_t=${Date.now()}`, { cache: 'no-store' })).json();
         const freshLead = updatedLeads.find((l: any) => l.id === selectedLead.id);
         if (freshLead) setSelectedLead(freshLead);
 
@@ -665,7 +665,7 @@ export default function CRMDashboard() {
         });
         fetchData();
         if (selectedLead) {
-          const updatedLeads = await (await fetch('/api/leads')).json();
+          const updatedLeads = await (await fetch(`/api/leads?_t=${Date.now()}`, { cache: 'no-store' })).json();
           const freshLead = updatedLeads.find((l: any) => l.id === selectedLead.id);
           if (freshLead) setSelectedLead(freshLead);
         }
@@ -1272,13 +1272,15 @@ export default function CRMDashboard() {
             {chatMessages
               .filter((msg) => {
                 if (!selectedLead) return false;
-                const associatedIds = [
+                // Direct Line: bloquear al leadId exacto seleccionado y sus IDs de sesión directa
+                const directIds = [
                   selectedLead.id,
                   selectedLead.phone,
                   selectedLead.whatsapp_lid
                 ].filter(Boolean);
-                const isMatch = associatedIds.includes(msg.lead_id);
-                console.log(`[UI filter] msg.id: ${msg.id}, msg.lead_id: ${msg.lead_id}, associatedIds: ${JSON.stringify(associatedIds)}, matches: ${isMatch}`);
+                const isMatch = directIds.includes(msg.lead_id) || 
+                                (msg.lead_id && directIds.map(id => id.replace(/\D/g, '')).includes(msg.lead_id.replace(/\D/g, '')));
+                console.log(`[UI Direct Line filter] msg.id: ${msg.id}, msg.lead_id: ${msg.lead_id}, directIds: ${JSON.stringify(directIds)}, matches: ${isMatch}`);
                 return isMatch;
               })
               .map((msg) => {
@@ -1484,7 +1486,7 @@ export default function CRMDashboard() {
                   }
 
                   try {
-                    const res = await fetch('/api/leads');
+                    const res = await fetch(`/api/leads?_t=${Date.now()}`, { cache: 'no-store' });
                     const leadsData = await res.json();
                     const list = Array.isArray(leadsData) ? leadsData : [];
                     let targetLead = list.find((l: any) => l.id === cleanLeadId || l.phone === cleanLeadId);

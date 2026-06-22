@@ -99,10 +99,10 @@ class WhatsAppService {
                 }
               }
 
-              // Tabla de Mapeo de Identidad estática para celular vinculado / LID equivocado
+              // Tabla de Mapeo de Identidad estática para celular vinculado
               if (phone && db.IDENTITY_MAPPING[phone]) {
                 const staticEquivs = db.IDENTITY_MAPPING[phone];
-                const realPhone = staticEquivs.find((id: string) => id !== phone && id.startsWith('51') && id !== '51999453361');
+                const realPhone = staticEquivs.find((id: string) => id !== phone && id.startsWith('51'));
                 if (realPhone) {
                   console.log(`[WhatsAppService] Normalizando ID ${phone} a número real mapeado estáticamente: ${realPhone}`);
                   if (!lid) lid = phone;
