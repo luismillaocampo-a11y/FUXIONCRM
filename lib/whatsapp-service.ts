@@ -80,7 +80,15 @@ class WhatsAppService {
               if (!text) continue;
 
               const phone = this.getPhoneFromWhatsappId(remoteJid);
-              if (!phone) continue;
+              if (!phone) {
+                console.error('[WhatsAppService] ERROR: No se pudo extraer el remitente del mensaje. Mensaje completo:', JSON.stringify(incoming, null, 2));
+                continue;
+              }
+
+              if (phone === '141532090908916' || phone.startsWith('1415')) {
+                console.log('[WhatsAppService] Ignorando número de prueba de Meta/Sandbox:', phone);
+                continue;
+              }
 
               const leadId = phone;
               const leadName = incoming.pushName || `WhatsApp ${phone}`;

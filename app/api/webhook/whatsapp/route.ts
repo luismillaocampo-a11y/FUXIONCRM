@@ -163,22 +163,32 @@ export async function POST(request: Request) {
 
     const fromMe = key.fromMe ?? false;
     
-    // Resolve clean phone number from JIDs
-    const phoneFromKey = getPhoneFromWhatsappId(data?.key?.remoteJid || key?.remoteJid || '');
-    const phoneFromSender = getPhoneFromWhatsappId(data?.sender || body?.sender || '');
+    // Resolve clean phone number from conversation JID (remoteJid represents the customer chat thread)
+    const remoteJid = data?.key?.remoteJid || key?.remoteJid || '';
+    let phone = getPhoneFromWhatsappId(remoteJid);
 
-    let phone = phoneFromKey || phoneFromSender || '';
+    // Si no se puede extraer de remoteJid, intentamos de sender
+    if (!phone) {
+      const senderJid = data?.sender || body?.sender || '';
+      phone = getPhoneFromWhatsappId(senderJid);
+    }
+
+    // Si por alguna razón el remitente no se puede leer, arroja un console.error con el objeto completo
+    if (!phone) {
+      console.error('[webhook/whatsapp] ERROR: No se pudo leer el remitente del mensaje. Objeto completo:', JSON.stringify(body, null, 2));
+      return NextResponse.json({ success: false, error: 'Remitente no legible' }, { status: 400 });
+    }
+
+    // Ignorar número de prueba de Meta/Sandbox para que no ensucie la base de datos
+    if (phone === '141532090908916' || phone.startsWith('1415')) {
+      console.log('[webhook/whatsapp] Ignorando número de prueba de Meta/Sandbox:', phone);
+      return NextResponse.json({ success: true, message: 'Ignored test number' });
+    }
 
     // Ignore group chats, status, or empty phone
-    const remoteJid = data?.key?.remoteJid || key?.remoteJid || '';
     if (remoteJid === 'status@broadcast' || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@g.us')) {
       console.log('[webhook/whatsapp] Ignored: Group, broadcast or status message');
       return NextResponse.json({ success: true, message: 'Ignored: Group or broadcast message' });
-    }
-
-    if (!phone) {
-      console.log('[webhook/whatsapp] Ignored: Could not extract phone number from payload');
-      return NextResponse.json({ success: true, message: 'Ignored: Invalid phone number' });
     }
 
     const messageText = extractMessageText(messageObj);
