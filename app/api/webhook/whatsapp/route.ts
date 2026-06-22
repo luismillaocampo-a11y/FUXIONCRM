@@ -106,7 +106,7 @@ async function sendWhatsAppMessage(phone: string, text: string) {
 
   const cleanPhone = phone.replace(/\D/g, '');
   const endpoint = `${url.replace(/\/$/, '')}/message/sendText/${instance}`;
-  
+
   const payload = {
     number: cleanPhone,
     text: text
@@ -147,7 +147,7 @@ export async function GET(request: Request) {
     console.log('[webhook/whatsapp] GET challenge verification successful');
     return new Response(challenge, { status: 200 });
   }
-  
+
   return new Response('WhatsApp Webhook Active', { status: 200 });
 }
 
@@ -156,7 +156,7 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   console.log('[webhook/whatsapp] POST called');
-  
+
   // Si la sesión de Baileys local está activa en la base de datos, ignoramos el webhook externo.
   // Baileys procesa directamente los mensajes en tiempo real vía websocket en whatsapp-service.ts.
   try {
@@ -188,7 +188,7 @@ export async function POST(request: Request) {
     }
 
     const fromMe = key.fromMe ?? false;
-    
+
     // Resolve clean phone number from conversation JID (remoteJid represents the customer chat thread, prioritizing remoteJidAlt)
     const remoteJid = data?.key?.remoteJidAlt || key?.remoteJidAlt || data?.key?.remoteJid || key?.remoteJid || '';
     const hasAlt = !!(data?.key?.remoteJidAlt || key?.remoteJidAlt);
@@ -257,7 +257,7 @@ export async function POST(request: Request) {
     // If message is outgoing (sent by us or from physical phone of agent)
     if (fromMe) {
       console.log(`[webhook/whatsapp] Logging outgoing message for lead ${leadId}`);
-      
+
       // Ensure lead exists
       await db.upsertLead({
         id: leadId,
@@ -344,7 +344,7 @@ export async function POST(request: Request) {
     // 6. Handle UNKNOWN replies (Shadow Mode Activation)
     if (reply.trim() === '[UNKNOWN]') {
       console.log(`[webhook/whatsapp] AI could not answer. Pausing bot and creating knowledge gap task.`);
-      
+
       // Pause bot
       await db.updateLeadBotActive(leadId, false);
 
