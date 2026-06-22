@@ -166,30 +166,31 @@ class WhatsAppService {
               // ==========================================
               if (sender === 'customer' && leadExists?.bot_active) {
                 try {
-                  // 1. INTENTAR EJECUTAR UN FLUJO ACTIVO PRIMERO
-                  const flowReply = await this.executeActiveFlow(leadId, text, phone);
+                  const flowContext = { overrideText: null };
+                  const flowReply = await this.executeActiveFlow(leadId, text, phone, flowContext);
                   
                   if (flowReply) {
-                    // El flujo manejó el mensaje (ej: envió bienvenida o botones)
-                    console.log(`[WhatsAppService] 🔀 Flujo ejecutado para ${leadId}: ${flowReply.slice(0, 60)}...`);
-                    await db.addMessage(leadId, 'bot', flowReply);
+                    // El flujo envió bienvenida o botones. NO guardar en BD aquí, el eco de WhatsApp (append) lo hará para evitar duplicados.
+                    console.log(`[WhatsAppService] 🔀 Flujo ejecutado para ${leadId}`);
                   } else {
                     // 2. SI NO HAY FLUJO, USAR IA (GEMINI RAG)
+                    // Usar el texto real o el texto del botón seleccionado
+                    const textForAI = flowContext.overrideText || text;
                     const recentMsgs = await db.getMessages(leadId);
                     const history = recentMsgs.slice(-5).map((m: any) => ({ sender: m.sender, message: m.message }));
-                    const reply = await queryKnowledgeBase(text, history);
+                    const reply = await queryKnowledgeBase(textForAI, history);
 
                     if (reply.trim() === '[UNKNOWN]') {
                       console.log(`[WhatsAppService] ⚠️ IA no pudo responder. Activando Shadow Mode para ${leadId}`);
                       await db.updateLeadBotActive(leadId, false);
                       let newStatus = 'Engaged';
-                      const lowerText = text.toLowerCase();
+                      const lowerText = textForAI.toLowerCase();
                       if (lowerText.includes('pay') || lowerText.includes('comprar') || lowerText.includes('pago')) newStatus = 'Pending Verification';
                       await db.updateLeadStatus(leadId, newStatus);
 
                       const contextSnippet = history.slice(-4).map((m: any) => `${m.sender}: ${m.message}`).join('\n');
                       const gapId = `gap-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                      await db.addGap(gapId, leadId, text, contextSnippet);
+                      await db.addGap(gapId, leadId, textForAI, contextSnippet);
 
                       const fallbackReply = 'Lo siento, no tengo esa información en este momento. Un agente humano revisará su pregunta y le responderá a la brevedad.';
                       await db.addMessage(leadId, 'bot', fallbackReply);
@@ -201,7 +202,7 @@ class WhatsAppService {
                     }
                   }
                 } catch (aiError) {
-                  console.error('[WhatsAppService] Error en flujo/IA, el mensaje ya fue guardado:', aiError);
+                  console.error('[WhatsAppService] Error en flujo/IA:', aiError);
                 }
               }
             }
@@ -331,14 +332,14 @@ class WhatsAppService {
     return `${raw}@s.whatsapp.net`;
   }
 
-  private async executeActiveFlow(leadId: string, text: string, phone: string): Promise<string | null> {
+  // --- MOTOR DE FLUJOS BACKEND ---
+  private async executeActiveFlow(leadId: string, text: string, phone: string, flowContext: { overrideText: string | null }): Promise<string | null> {
     const flow = await db.getActiveFlow();
     if (!flow || !flow.nodes || !flow.edges) return null;
 
     const nodes = flow.nodes;
     const edges = flow.edges;
 
-    // Si el cliente NO tiene estado, buscar el Disparador (Trigger)
     if (!this.flowState.has(leadId)) {
       const triggerNode = nodes.find((n: any) => n.type === 'trigger');
       if (triggerNode) {
@@ -351,27 +352,32 @@ class WhatsAppService {
           }
         }
       }
-      return null; // No activó el flujo, dejar pasar a Gemini
-    } 
-    // Si el cliente YA está en un flujo (esperando botones)
-    else {
+      return null; 
+    } else {
       const currentNodeId = this.flowState.get(leadId)!;
       const currentNode = nodes.find((n: any) => n.id === currentNodeId);
 
       if (currentNode?.type === 'buttons') {
         const buttons = currentNode.data.buttons || [];
-        const btnIndex = buttons.findIndex((b: string) => text.toLowerCase().trim() === b.toLowerCase().trim());
+        // ACEPTAR TEXTO EXACTO O NÚMERO (1, 2, 3)
+        const btnIndex = buttons.findIndex((b: string, i: number) => text.trim() === b.trim() || text.trim() === String(i + 1));
         
         if (btnIndex !== -1) {
+          const selectedButtonText = buttons[btnIndex];
           const handleId = `btn-${btnIndex}`;
           const edge = edges.find((e: any) => e.source === currentNode.id && e.sourceHandle === handleId);
+          
           if (edge) {
             this.flowState.set(leadId, edge.target);
             return await this.processFlowNode(leadId, edge.target, nodes, edges, phone);
+          } else {
+            // NO HAY NODO SIGUIENTE: Pasar el texto del botón a Gemini para que responda con la Biblioteca
+            this.flowState.delete(leadId);
+            flowContext.overrideText = selectedButtonText; // Ej: "Informacion de Productos"
+            return null;
           }
         }
       }
-      // Si escribió algo que no es un botón, salirse del flujo y mandar a IA
       this.flowState.delete(leadId);
       return null; 
     }
@@ -380,34 +386,31 @@ class WhatsAppService {
   private async processFlowNode(leadId: string, nodeId: string, nodes: any[], edges: any[], phone: string): Promise<string | null> {
     const node = nodes.find((n: any) => n.id === nodeId);
     if (!node) {
-      this.flowState.delete(leadId); // Fin del flujo
+      this.flowState.delete(leadId); 
       return null;
     }
 
-    // Nodo de Mensaje de Texto
     if (node.type === 'message') {
       let msgText = node.data.message;
       
-      // Verificar si el siguiente nodo es de botones para adjuntarlos al mismo mensaje
       const nextEdge = edges.find((e: any) => e.source === node.id);
       if (nextEdge) {
         const nextNode = nodes.find((n: any) => n.id === nextEdge.target);
         if (nextNode?.type === 'buttons') {
           const btnText = (nextNode.data.buttons || []).map((b: string, i: number) => `👉 *${i+1}.* ${b}`).join('\n');
           msgText = `${msgText}\n\n${btnText}`;
-          this.flowState.set(leadId, nextNode.id); // Actualizar estado al nodo de botones
+          this.flowState.set(leadId, nextNode.id); 
         } else {
-          this.flowState.set(leadId, nextEdge.target); // Pasar al siguiente nodo
+          this.flowState.set(leadId, nextEdge.target); 
         }
       } else {
-        this.flowState.delete(leadId); // Fin del flujo
+        this.flowState.delete(leadId); 
       }
 
       await this.sendMessageToPhone(phone, msgText);
       return msgText;
     }
 
-    // Si por alguna razón cae directo en un nodo de botones
     if (node.type === 'buttons') {
       const btnText = (node.data.buttons || []).map((b: string, i: number) => `👉 *${i+1}.* ${b}`).join('\n');
       const fullMsg = `Selecciona una de las siguientes opciones:\n\n${btnText}`;
