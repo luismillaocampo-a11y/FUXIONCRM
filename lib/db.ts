@@ -52,6 +52,7 @@ function getSqliteDb() {
       id TEXT PRIMARY KEY,
       name TEXT,
       phone TEXT UNIQUE NOT NULL,
+      whatsapp_lid TEXT,
       status TEXT NOT NULL DEFAULT 'New',
       tags TEXT NOT NULL DEFAULT '[]',
       bot_active INTEGER NOT NULL DEFAULT 1,
@@ -111,6 +112,10 @@ function getSqliteDb() {
 
   try {
     sqliteDb.exec('ALTER TABLE chat_messages ADD COLUMN is_read INTEGER DEFAULT 0;');
+  } catch (e) {}
+
+  try {
+    sqliteDb.exec('ALTER TABLE leads ADD COLUMN whatsapp_lid TEXT;');
   } catch (e) {}
 
   // Insert default flows if empty
@@ -369,20 +374,43 @@ export const db = {
     }
   },
 
-  async upsertLead(lead: { id: string; name: string; phone: string; status?: string; tags?: string[]; bot_active?: boolean }): Promise<any> {
+  async getLeadIdByWhatsappLid(lid: string): Promise<string | null> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => 
+        c.from('leads')
+         .select('id')
+         .eq('whatsapp_lid', lid)
+         .maybeSingle()
+      );
+      if (res && !res.error && res.data) return res.data.id;
+      return null;
+    }
+    const db = getSqliteDb();
+    const row = db.prepare('SELECT id FROM leads WHERE whatsapp_lid = ?').get(lid) as any;
+    return row ? row.id : null;
+  },
 
-    const status = lead.status || 'New';
-    const tags = JSON.stringify(lead.tags || []);
-    const botActiveVal = lead.bot_active !== false ? 1 : 0;
+  async upsertLead(lead: { id: string; name: string; phone: string; whatsapp_lid?: string | null; status?: string; tags?: string[]; bot_active?: boolean }): Promise<any> {
+    const existing = await this.getLeadById(lead.id);
+    
+    // Merge existing values to prevent losing them on simple upserts
+    const whatsappLid = lead.whatsapp_lid || existing?.whatsapp_lid || null;
+    const status = lead.status || existing?.status || 'New';
+    const tags = lead.tags || (existing?.tags ? (typeof existing.tags === 'string' ? JSON.parse(existing.tags) : existing.tags) : []);
+    const botActive = lead.bot_active !== undefined ? lead.bot_active : (existing?.bot_active !== undefined ? existing.bot_active : true);
+
+    const tagsStr = JSON.stringify(tags);
+    const botActiveVal = botActive ? 1 : 0;
 
     if (useSupabase) {
       const res = await runSupabaseQuery((c) => c.from('leads').upsert({
         id: lead.id,
         name: lead.name,
         phone: lead.phone,
+        whatsapp_lid: whatsappLid,
         status,
-        tags: lead.tags || [],
-        bot_active: lead.bot_active !== false
+        tags,
+        bot_active: botActive
       }).select().single());
       if (res && !res.error) return res.data;
       // fall through to sqlite fallback
@@ -390,16 +418,17 @@ export const db = {
     {
       const db = getSqliteDb();
       db.prepare(`
-        INSERT INTO leads (id, name, phone, status, tags, bot_active)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO leads (id, name, phone, whatsapp_lid, status, tags, bot_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           phone = excluded.phone,
-          status = COALESCE(excluded.status, leads.status),
-          tags = COALESCE(excluded.tags, leads.tags),
-          bot_active = COALESCE(excluded.bot_active, leads.bot_active),
+          whatsapp_lid = excluded.whatsapp_lid,
+          status = excluded.status,
+          tags = excluded.tags,
+          bot_active = excluded.bot_active,
           updated_at = CURRENT_TIMESTAMP
-      `).run(lead.id, lead.name, lead.phone, status, tags, botActiveVal);
+      `).run(lead.id, lead.name, lead.phone, whatsappLid, status, tagsStr, botActiveVal);
       return this.getLeadById(lead.id);
     }
   },

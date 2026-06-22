@@ -191,12 +191,28 @@ export async function POST(request: Request) {
     
     // Resolve clean phone number from conversation JID (remoteJid represents the customer chat thread, prioritizing remoteJidAlt)
     const remoteJid = data?.key?.remoteJidAlt || key?.remoteJidAlt || data?.key?.remoteJid || key?.remoteJid || '';
-    let phone = getPhoneFromWhatsappId(remoteJid);
+    const hasAlt = !!(data?.key?.remoteJidAlt || key?.remoteJidAlt);
+    const phoneJid = hasAlt ? (data?.key?.remoteJidAlt || key?.remoteJidAlt).toString() : remoteJid.toString();
+    const lidJid = hasAlt ? (data?.key?.remoteJid || key?.remoteJid).toString() : null;
+
+    let phone = getPhoneFromWhatsappId(phoneJid);
+    let lid = lidJid ? getPhoneFromWhatsappId(lidJid) : null;
 
     // Si no se puede extraer de remoteJid, intentamos de sender
     if (!phone) {
       const senderJid = data?.sender || body?.sender || '';
       phone = getPhoneFromWhatsappId(senderJid);
+    }
+
+    // Si el ID principal de comunicación viene en formato LID (termina en @lid), 
+    // intentamos resolver su equivalente de número real mapeado en la BD
+    if (phoneJid.endsWith('@lid') && phone) {
+      const mappedLeadId = await db.getLeadIdByWhatsappLid(phone);
+      if (mappedLeadId) {
+        console.log(`[webhook/whatsapp] Resolviendo LID ${phone} a número real mapeado: ${mappedLeadId}`);
+        lid = phone;
+        phone = mappedLeadId;
+      }
     }
 
     // Si por alguna razón el remitente no se puede leer, arroja un console.error con el objeto completo
@@ -234,23 +250,28 @@ export async function POST(request: Request) {
       console.log(`[webhook/whatsapp] Logging outgoing message for lead ${leadId}`);
       
       // Ensure lead exists
-      await supabase.from('leads').upsert({
+      await db.upsertLead({
         id: leadId,
         name: cleanName,
         phone: phone,
+        whatsapp_lid: lid,
         status: 'New',
-        tags: '[]',
-        bot_active: 1
-      }, { onConflict: 'id' });
+        tags: [],
+        bot_active: true
+      });
 
       // Save outgoing message (uses WhatsApp key ID to avoid duplicates)
       const msgId = key.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-      await supabase.from('chat_messages').upsert({
-        id: msgId,
-        lead_id: leadId,
-        sender: 'bot',
-        message: messageText
-      }, { onConflict: 'id' });
+      if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+        await supabase.from('chat_messages').upsert({
+          id: msgId,
+          lead_id: leadId,
+          sender: 'bot',
+          message: messageText
+        }, { onConflict: 'id' });
+      } else {
+        await db.addMessage(leadId, 'bot', messageText);
+      }
 
       return NextResponse.json({ success: true, message: 'Logged outgoing message' });
     }
@@ -258,47 +279,40 @@ export async function POST(request: Request) {
     // --- Incoming Message Processing (from client) ---
     console.log(`[webhook/whatsapp] Processing incoming message from customer: ${phone}, text: "${messageText}"`);
 
-    // 1. Fetch or create lead using service client
-    const { data: lead, error: fetchError } = await supabase
-      .from('leads')
-      .select('*')
-      .eq('id', leadId)
-      .maybeSingle();
-
-    if (fetchError) {
-      console.error('[webhook/whatsapp] Fetch lead error:', fetchError);
-    }
-
-    let activeLead = lead;
-    if (!lead) {
-      const { data: newLead, error: upsertError } = await supabase
-        .from('leads')
-        .upsert({
-          id: leadId,
-          name: cleanName,
-          phone: phone,
-          status: 'New',
-          tags: '[]',
-          bot_active: 1
-        }, { onConflict: 'id' })
-        .select()
-        .single();
-
-      if (upsertError) {
-        console.error('[webhook/whatsapp] Error upserting lead:', upsertError);
-        throw upsertError;
-      }
-      activeLead = newLead;
+    // 1. Fetch or create lead using database helper
+    let activeLead = await db.getLeadById(leadId);
+    if (!activeLead) {
+      activeLead = await db.upsertLead({
+        id: leadId,
+        name: cleanName,
+        phone: phone,
+        whatsapp_lid: lid,
+        status: 'New',
+        tags: [],
+        bot_active: true
+      });
+    } else if (lid && activeLead.whatsapp_lid !== lid) {
+      // Si el LID cambió o se detectó por primera vez, lo actualizamos
+      activeLead = await db.upsertLead({
+        id: leadId,
+        name: activeLead.name || cleanName,
+        phone: activeLead.phone || phone,
+        whatsapp_lid: lid
+      });
     }
 
     // 2. Save incoming message to database
     const msgId = key.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    await supabase.from('chat_messages').upsert({
-      id: msgId,
-      lead_id: leadId,
-      sender: 'customer',
-      message: messageText
-    }, { onConflict: 'id' });
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+      await supabase.from('chat_messages').upsert({
+        id: msgId,
+        lead_id: leadId,
+        sender: 'customer',
+        message: messageText
+      }, { onConflict: 'id' });
+    } else {
+      await db.addMessage(leadId, 'customer', messageText);
+    }
 
     // 3. Stop if bot is inactive (Shadow Mode / paused) for this lead
     const isBotActive = activeLead.bot_active === 1 || activeLead.bot_active === true;

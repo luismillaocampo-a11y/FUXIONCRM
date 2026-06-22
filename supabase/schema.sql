@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY,
     name TEXT,
     phone TEXT UNIQUE NOT NULL,
+    whatsapp_lid TEXT,
     status TEXT NOT NULL DEFAULT 'New', -- 'New', 'Engaged', 'Pending Verification', 'Converted'
     tags TEXT NOT NULL DEFAULT '[]', -- JSON array of tags: '["warm", "needs-followup"]'
     bot_active INTEGER NOT NULL DEFAULT 1, -- 1 = active, 0 = paused/shadow mode

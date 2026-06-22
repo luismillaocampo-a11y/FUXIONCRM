@@ -72,8 +72,11 @@ class WhatsAppService {
               const message = incoming?.message;
               if (!message || (!key.remoteJid && !key.remoteJidAlt)) continue;
 
-              const remoteJid = (key.remoteJidAlt || key.remoteJid).toString();
-              if (remoteJid === 'status@broadcast' || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@g.us')) continue;
+              const hasAlt = !!key.remoteJidAlt;
+              const phoneJid = hasAlt ? key.remoteJidAlt.toString() : key.remoteJid.toString();
+              const lidJid = hasAlt ? key.remoteJid.toString() : null;
+
+              if (phoneJid === 'status@broadcast' || phoneJid.endsWith('@broadcast') || phoneJid.endsWith('@g.us')) continue;
               if (incoming.key?.fromMe) continue;
               if (message.protocolMessage || message.messageStubType) continue;
 
@@ -82,13 +85,27 @@ class WhatsAppService {
               const text = this.extractMessageText(message);
               if (!text) continue;
 
-              const phone = this.getPhoneFromWhatsappId(remoteJid);
+              let phone = this.getPhoneFromWhatsappId(phoneJid);
+              let lid = lidJid ? this.getPhoneFromWhatsappId(lidJid) : null;
+
+              // Si el ID principal de comunicación viene en formato LID (termina en @lid), 
+              // intentamos resolver su equivalente de número real mapeado en la BD
+              if (phoneJid.endsWith('@lid') && phone) {
+                const mappedLeadId = await db.getLeadIdByWhatsappLid(phone);
+                if (mappedLeadId) {
+                  console.log(`[WhatsAppService] Resolviendo LID ${phone} a número real mapeado: ${mappedLeadId}`);
+                  lid = phone;
+                  phone = mappedLeadId;
+                }
+              }
+
               if (!phone) {
                 console.error('[WhatsAppService] ERROR: No se pudo extraer el remitente del mensaje. Mensaje completo:', JSON.stringify(incoming, null, 2));
                 continue;
               }
 
-              if (phone === '141532090908916' || phone.startsWith('1415')) {
+              // Ignorar números de prueba de Meta/Sandbox (141532090908916), pero solo si no están mapeados a un cliente real
+              if ((phone === '141532090908916' || phone.startsWith('1415')) && !lid) {
                 console.log('[WhatsAppService] Ignorando número de prueba de Meta/Sandbox:', phone);
                 continue;
               }
@@ -96,7 +113,16 @@ class WhatsAppService {
               const leadId = phone;
               const leadName = incoming.pushName || `WhatsApp ${phone}`;
 
-              await db.upsertLead({ id: leadId, name: leadName, phone, status: 'New', tags: [], bot_active: true });
+              // Guardar/actualizar cliente guardando el mapeo de whatsapp_lid si existe
+              await db.upsertLead({ 
+                id: leadId, 
+                name: leadName, 
+                phone, 
+                whatsapp_lid: lid,
+                status: 'New', 
+                tags: [], 
+                bot_active: true 
+              });
               await db.addMessage(leadId, 'customer', text);
               console.log('Saved incoming WhatsApp message for lead', leadId, 'text:', text.slice(0, 100));
             }
