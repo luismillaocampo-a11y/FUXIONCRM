@@ -63,6 +63,7 @@ class WhatsAppService {
         sock.ev.on('creds.update', saveCreds);
 
         sock.ev.on('messages.upsert', async (messageUpdate: any) => {
+          console.log("Mensaje crudo recibido:", JSON.stringify(messageUpdate, null, 2));
           try {
             if (messageUpdate.type !== 'notify' || !Array.isArray(messageUpdate.messages)) return;
 
