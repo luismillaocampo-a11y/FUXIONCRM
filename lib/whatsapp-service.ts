@@ -18,8 +18,8 @@ class WhatsAppService {
   public status: string | null = null;
   public error: string | null = null;
   private qrWaiters: QrWaiter[] = [];
-  private lastInitTime = 0;
   private isResetting = false;
+  private wasConnected = false;
 
   public async initialize(force: boolean = false) {
     if (force) {
@@ -31,6 +31,7 @@ class WhatsAppService {
         this.socket = null;
       }
       this.initPromise = null;
+      this.wasConnected = false;
     }
 
     if (this.socket) {
@@ -40,17 +41,10 @@ class WhatsAppService {
       } catch (e) {}
       this.socket = null;
       this.initPromise = null;
+      this.wasConnected = false;
     }
 
     if (this.initPromise) return this.initPromise;
-
-    const now = Date.now();
-    const timeSinceLastInit = now - this.lastInitTime;
-    if (!force && timeSinceLastInit < 30000) {
-      console.log(`[WhatsAppService] Evitando inicialización repetida, cooldown activo. Restante: ${Math.round((30000 - timeSinceLastInit) / 1000)}s`);
-      return;
-    }
-    this.lastInitTime = now;
 
     this.status = 'connecting';
     this.error = null;
@@ -119,6 +113,9 @@ class WhatsAppService {
           if (update.connection) {
             const normalizedStatus = update.connection === 'open' ? 'connected' : update.connection;
             this.status = normalizedStatus;
+            if (normalizedStatus === 'connected') {
+              this.wasConnected = true;
+            }
             console.log('WhatsApp connection update:', update.connection, 'normalized:', normalizedStatus);
           }
 
@@ -130,15 +127,20 @@ class WhatsAppService {
             this.initPromise = null;
             
             const loggedOut = statusCode === baileys.DisconnectReason?.loggedOut || statusCode === 401;
-            if (!loggedOut && !this.isResetting) {
+            
+            // Reintentar solo si ya estaba conectado y no es un logout manual
+            if (this.wasConnected && !loggedOut && !this.isResetting) {
               console.log(`Auto-reconnect triggered: socket closed with status ${statusCode}. Reconnecting in 5s...`);
               setTimeout(() => {
                 this.initialize().catch((err) => console.error('Error in WhatsApp auto-reconnect:', err));
               }, 5000);
             } else {
+              console.log(`Auto-reconnect skipped: wasConnected=${this.wasConnected}, loggedOut=${loggedOut}, isResetting=${this.isResetting}`);
               this.latestQrText = null;
               this.latestQrDataUrl = null;
             }
+            // Resetear el flag de conexión
+            this.wasConnected = false;
           }
         });
 
