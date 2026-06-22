@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
     sender TEXT NOT NULL, -- 'customer', 'bot', 'agent'
     message TEXT NOT NULL,
+    is_read BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

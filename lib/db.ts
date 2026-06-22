@@ -97,6 +97,7 @@ function getSqliteDb() {
       sender TEXT NOT NULL,
       message TEXT NOT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      is_read INTEGER DEFAULT 0,
       FOREIGN KEY(lead_id) REFERENCES leads(id) ON DELETE CASCADE
     );
 
@@ -107,6 +108,10 @@ function getSqliteDb() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  try {
+    sqliteDb.exec('ALTER TABLE chat_messages ADD COLUMN is_read INTEGER DEFAULT 0;');
+  } catch (e) {}
 
   // Insert default flows if empty
   const flowCount = sqliteDb.prepare('SELECT count(*) as count FROM flows').get() as { count: number };
@@ -298,15 +303,40 @@ export const db = {
          .select('*')
          .order('created_at', { ascending: false })
       );
-      if (res && !res.error) return res.data || [];
+      if (res && !res.error) {
+        const leads = res.data || [];
+        const { data: unreadData, error: unreadError } = await getSupabase()
+          .from('chat_messages')
+          .select('lead_id')
+          .eq('sender', 'customer')
+          .eq('is_read', false);
+        
+        const counts: { [key: string]: number } = {};
+        if (!unreadError && unreadData) {
+          for (const msg of unreadData) {
+            counts[msg.lead_id] = (counts[msg.lead_id] || 0) + 1;
+          }
+        }
+        return leads.map((l: any) => ({
+          ...l,
+          unread_count: counts[l.id] || 0
+        }));
+      }
       // fall through to sqlite fallback
     }
     {
       const db = getSqliteDb();
-      return db.prepare("SELECT * FROM leads ORDER BY created_at DESC").all().map((l: any) => ({
+      const leads = db.prepare("SELECT * FROM leads ORDER BY created_at DESC").all();
+      const unreadData = db.prepare("SELECT lead_id FROM chat_messages WHERE sender = 'customer' AND is_read = 0").all() as any[];
+      const counts: { [key: string]: number } = {};
+      for (const msg of unreadData) {
+        counts[msg.lead_id] = (counts[msg.lead_id] || 0) + 1;
+      }
+      return leads.map((l: any) => ({
         ...l,
         tags: JSON.parse(l.tags),
-        bot_active: Boolean(l.bot_active)
+        bot_active: Boolean(l.bot_active),
+        unread_count: counts[l.id] || 0
       }));
     }
   },
@@ -653,17 +683,32 @@ export const db = {
         id,
         lead_id: leadId,
         sender,
-        message
+        message,
+        is_read: false
       }).select().single();
       if (error) throw error;
       return data;
     } else {
       const db = getSqliteDb();
       db.prepare(`
-        INSERT INTO chat_messages (id, lead_id, sender, message)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO chat_messages (id, lead_id, sender, message, is_read)
+        VALUES (?, ?, ?, ?, 0)
       `).run(id, leadId, sender, message);
       return db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id);
+    }
+  },
+
+  async markMessagesAsRead(leadId: string): Promise<void> {
+    if (useSupabase) {
+      const { error } = await getSupabase()
+        .from('chat_messages')
+        .update({ is_read: true })
+        .eq('lead_id', leadId)
+        .eq('sender', 'customer');
+      if (error) throw error;
+    } else {
+      const db = getSqliteDb();
+      db.prepare("UPDATE chat_messages SET is_read = 1 WHERE lead_id = ? AND sender = 'customer'").run(leadId);
     }
   },
 

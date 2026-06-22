@@ -6,7 +6,7 @@ import {
   Search, Plus, X, Send, User, Bot, MessageSquare, 
   Trash2, Upload, FileText, Image, Video, HelpCircle, 
   AlertCircle, CheckCircle2, UserCheck, ToggleLeft, ToggleRight,
-  RefreshCw, FileCode, Check, Clock
+  RefreshCw, FileCode, Check, Clock, Smile
 } from 'lucide-react';
 
 export default function CRMDashboard() {
@@ -26,6 +26,7 @@ export default function CRMDashboard() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatNotice, setChatNotice] = useState<string | null>(null);
   const [newMessageAlert, setNewMessageAlert] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const chatContainerRef = React.useRef<HTMLDivElement>(null);
   const chatCountRef = React.useRef(0);
   const lastScrolledLeadIdRef = React.useRef<string | null>(null);
@@ -264,8 +265,19 @@ export default function CRMDashboard() {
           const newMsg = payload.new;
           if (!newMsg || newMsg.sender !== 'customer') return;
 
+          // Si el chat ya está abierto para este cliente, marcar como leído inmediatamente en la DB
+          if (selectedLeadRef.current && selectedLeadRef.current.id === newMsg.lead_id) {
+            fetch(`/api/chat/messages?leadId=${encodeURIComponent(newMsg.lead_id)}`, {
+              method: 'PUT'
+            }).then(() => fetchData()).catch(err => console.error('Error auto-marking messages as read:', err));
+            return;
+          }
+
           // Reproducir bip sonoro
           playNotificationSound();
+
+          // Refrescar lista de clientes para actualizar la burbuja en tiempo real
+          fetchData();
 
           // Encontrar nombre del lead para la alerta
           fetch('/api/leads')
@@ -549,6 +561,24 @@ export default function CRMDashboard() {
       }
     } catch (err) {
       console.error('Error alternando bot:', err);
+    }
+  };
+
+  // Seleccionar un cliente y marcar mensajes como leídos
+  const handleSelectLead = async (lead: any) => {
+    setSelectedLead(lead);
+    
+    // Si tiene mensajes no leídos, limpiamos la burbuja inmediatamente localmente
+    if (lead.unread_count > 0) {
+      setLeads(prevLeads => prevLeads.map(l => l.id === lead.id ? { ...l, unread_count: 0 } : l));
+      try {
+        await fetch(`/api/chat/messages?leadId=${encodeURIComponent(lead.id)}`, {
+          method: 'PUT'
+        });
+        fetchData();
+      } catch (err) {
+        console.error('Error al marcar mensajes como leídos:', err);
+      }
     }
   };
 
@@ -895,9 +925,16 @@ export default function CRMDashboard() {
                         className={`hover:bg-slate-800/20 transition-all cursor-pointer ${
                           selectedLead?.id === lead.id ? 'bg-emerald-500/5 border-l-2 border-emerald-500' : ''
                         }`}
-                        onClick={() => setSelectedLead(lead)}
+                        onClick={() => handleSelectLead(lead)}
                       >
-                        <td className="px-6 py-4 font-medium text-white">{lead.name}</td>
+                        <td className="px-6 py-4 font-medium text-white flex items-center justify-between gap-2">
+                          <span>{lead.name}</span>
+                          {lead.unread_count > 0 && (
+                            <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-[10px] font-bold text-white bg-rose-500 rounded-full animate-bounce shrink-0 shadow-lg shadow-rose-500/25">
+                              {lead.unread_count}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-6 py-4 font-mono text-xs">{lead.phone}</td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -946,7 +983,7 @@ export default function CRMDashboard() {
                         </td>
                         <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => setSelectedLead(lead)}
+                            onClick={() => handleSelectLead(lead)}
                             className="text-xs font-semibold text-slate-400 hover:text-emerald-400 transition"
                           >
                             Ver Chat
@@ -1318,13 +1355,42 @@ export default function CRMDashboard() {
             </div>
 
             <div className="flex gap-2">
-              <input
-                type="text"
-                value={typedMessage}
-                onChange={(e) => setTypedMessage(e.target.value)}
-                placeholder={isSimulatingCustomer ? "Preguntar al bot como Cliente..." : "Responder manualmente como Agente..."}
-                className="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
-              />
+              <div className="relative flex-1 flex">
+                <button
+                  type="button"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-emerald-400 transition-colors"
+                  title="Insertar emoji"
+                >
+                  <Smile className="h-4 w-4" />
+                </button>
+                <input
+                  type="text"
+                  value={typedMessage}
+                  onChange={(e) => setTypedMessage(e.target.value)}
+                  placeholder={isSimulatingCustomer ? "Preguntar al bot como Cliente..." : "Responder manualmente como Agente..."}
+                  className="flex-1 pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
+                />
+
+                {/* Floating Emoji Picker */}
+                {showEmojiPicker && (
+                  <div className="absolute bottom-11 left-0 z-30 grid grid-cols-8 gap-1 p-2 bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl backdrop-blur-xl w-64 animate-fade-in">
+                    {['😀', '😂', '😍', '👍', '🙏', '🎉', '🔥', '❤️', '🤔', '😎', '💡', '🚀', '👇', '✅', '❌', '😊'].map(emoji => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => {
+                          setTypedMessage(prev => prev + emoji);
+                          setShowEmojiPicker(false);
+                        }}
+                        className="w-7 h-7 flex items-center justify-center text-sm rounded-lg hover:bg-slate-800 transition-colors"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 type="submit"
                 disabled={!typedMessage.trim() || chatLoading}
@@ -1400,7 +1466,9 @@ export default function CRMDashboard() {
       )}
       {/* Notificación flotante de nuevos mensajes */}
       {activeNotification && (
-        <div className="fixed bottom-8 right-8 z-50 w-96 rounded-3xl border border-emerald-500/25 bg-slate-950/50 p-5 shadow-[0_20px_50px_rgba(16,185,129,0.12)] animate-slide-in flex items-start gap-4 backdrop-blur-xl transition-all duration-300">
+        <div className={`fixed bottom-8 z-50 w-96 rounded-3xl border border-emerald-500/25 bg-slate-950/50 p-5 shadow-[0_20px_50px_rgba(16,185,129,0.12)] animate-slide-in flex items-start gap-4 backdrop-blur-xl transition-all duration-300 ${
+          selectedLead ? 'right-[416px]' : 'right-8'
+        }`}>
           <div className="mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/15">
             <MessageSquare className="h-4 w-4 animate-bounce" />
           </div>
