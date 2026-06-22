@@ -256,7 +256,7 @@ export async function POST(request: Request) {
 
     // If message is outgoing (sent by us or from physical phone of agent)
     if (fromMe) {
-      console.log(`[webhook/whatsapp] Logging outgoing message for lead ${leadId}`);
+      console.log(`[webhook/whatsapp] Logging outgoing message: direction = 'outgoing', sender = 'agent', source = 'mobile_device' for lead ${leadId}`);
 
       // Ensure lead exists
       await db.upsertLead({
@@ -275,11 +275,11 @@ export async function POST(request: Request) {
         await supabase.from('chat_messages').upsert({
           id: msgId,
           lead_id: leadId,
-          sender: 'bot',
+          sender: 'agent',
           message: messageText
         }, { onConflict: 'id' });
       } else {
-        await db.addMessage(leadId, 'bot', messageText);
+        await db.addMessage(leadId, 'agent', messageText, msgId);
       }
 
       return NextResponse.json({ success: true, message: 'Logged outgoing message' });

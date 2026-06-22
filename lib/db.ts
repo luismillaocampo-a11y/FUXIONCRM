@@ -871,23 +871,23 @@ export const db = {
     return messages;
   },
 
-  async addMessage(leadId: string, sender: string, message: string): Promise<any> {
+  async addMessage(leadId: string, sender: string, message: string, customId?: string): Promise<any> {
     const normalizedId = await this.normalizeLeadId(leadId);
-    const id = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = customId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     if (useSupabase) {
-      const { data, error } = await getSupabase().from('chat_messages').insert({
+      const { data, error } = await getSupabase().from('chat_messages').upsert({
         id,
         lead_id: normalizedId,
         sender,
         message,
         is_read: false
-      }).select().single();
+      }, { onConflict: 'id' }).select().single();
       if (error) throw error;
       return data;
     } else {
       const db = getSqliteDb();
       db.prepare(`
-        INSERT INTO chat_messages (id, lead_id, sender, message, is_read)
+        INSERT OR IGNORE INTO chat_messages (id, lead_id, sender, message, is_read)
         VALUES (?, ?, ?, ?, 0)
       `).run(id, normalizedId, sender, message);
       return db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id);

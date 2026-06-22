@@ -77,7 +77,7 @@ class WhatsAppService {
               const lidJid = hasAlt ? key.remoteJid.toString() : null;
 
               if (phoneJid === 'status@broadcast' || phoneJid.endsWith('@broadcast') || phoneJid.endsWith('@g.us')) continue;
-              if (incoming.key?.fromMe) continue;
+              const fromMe = incoming.key?.fromMe ?? false;
               if (message.protocolMessage || message.messageStubType) continue;
 
               // Extract text directly. No cleaning or sanitization is done here,
@@ -121,19 +121,25 @@ class WhatsAppService {
 
               const leadId = phone;
               const leadName = incoming.pushName || `WhatsApp ${phone}`;
+              const sender = fromMe ? 'agent' : 'customer';
+              const msgId = incoming.key?.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
-              // Guardar/actualizar cliente guardando el mapeo de whatsapp_lid si existe
-              await db.upsertLead({ 
-                id: leadId, 
-                name: leadName, 
-                phone, 
-                whatsapp_lid: lid,
-                status: 'New', 
-                tags: [], 
-                bot_active: true 
-              });
-              await db.addMessage(leadId, 'customer', text);
-              console.log('Saved incoming WhatsApp message for lead', leadId, 'text:', text.slice(0, 100));
+              // Guardar/actualizar cliente si no existe o si el mensaje es del cliente para actualizar sus datos
+              const leadExists = await db.getLeadById(leadId);
+              if (!leadExists || sender === 'customer') {
+                await db.upsertLead({ 
+                  id: leadId, 
+                  name: leadName, 
+                  phone, 
+                  whatsapp_lid: lid,
+                  status: 'New', 
+                  tags: [], 
+                  bot_active: true 
+                });
+              }
+
+              await db.addMessage(leadId, sender, text, msgId);
+              console.log(`Saved WhatsApp message for lead ${leadId}: sender = ${sender}, text:`, text.slice(0, 100));
             }
           } catch (messageError: any) {
             console.error('Error processing incoming WhatsApp messages:', messageError?.message || messageError, messageError?.stack);
