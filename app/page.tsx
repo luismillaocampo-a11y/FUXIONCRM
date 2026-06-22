@@ -361,6 +361,7 @@ export default function CRMDashboard() {
         const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
         const data = await res.json();
         const messages = Array.isArray(data) ? data : [];
+        console.log(`[UI pollInterval] leadId: ${leadId}, messages count: ${messages.length}`, messages);
 
         if (messages.length > chatCountRef.current) {
           const newMsg = messages[messages.length - 1];
@@ -386,6 +387,7 @@ export default function CRMDashboard() {
     try {
       const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}`);
       const data = await res.json();
+      console.log(`[UI fetchMessages] leadId: ${leadId}, messages count: ${Array.isArray(data) ? data.length : 0}`, data);
       setChatMessages(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error cargando mensajes:', err);
@@ -1267,29 +1269,32 @@ export default function CRMDashboard() {
                 {chatNotice}
               </div>
             )}
-            {chatMessages.map((msg) => (
-              <div 
-                key={msg.id} 
-                className={`flex flex-col max-w-[80%] ${
-                  msg.sender === 'customer' ? 'mr-auto items-start' : 'ml-auto items-end'
-                }`}
-              >
-                <div className={`flex items-center gap-1 text-[9px] text-slate-500 mb-1 px-1`}>
-                  {msg.sender === 'bot' && <Bot className="h-3 w-3 text-emerald-400" />}
-                  {msg.sender === 'agent' && <User className="h-3 w-3 text-cyan-400" />}
-                  <span className="capitalize">{msg.sender === 'customer' ? 'Cliente' : msg.sender === 'bot' ? 'Asistente IA' : 'Agente'}</span>
+            {chatMessages.map((msg) => {
+              console.log('[UI chatMessages.map] msg:', msg, 'selectedLead:', selectedLead);
+              return (
+                <div 
+                  key={msg.id} 
+                  className={`flex flex-col max-w-[80%] ${
+                    msg.sender === 'customer' ? 'mr-auto items-start' : 'ml-auto items-end'
+                  }`}
+                >
+                  <div className={`flex items-center gap-1 text-[9px] text-slate-500 mb-1 px-1`}>
+                    {msg.sender === 'bot' && <Bot className="h-3 w-3 text-emerald-400" />}
+                    {msg.sender === 'agent' && <User className="h-3 w-3 text-cyan-400" />}
+                    <span className="capitalize">{msg.sender === 'customer' ? 'Cliente' : msg.sender === 'bot' ? 'Asistente IA' : 'Agente'}</span>
+                  </div>
+                  <div className={`chat-message-text p-3 rounded-2xl text-xs leading-relaxed ${
+                    msg.sender === 'customer' 
+                      ? 'bg-slate-800/80 text-slate-200 rounded-tl-none border border-slate-700/40' 
+                      : msg.sender === 'bot'
+                        ? 'bg-emerald-600/15 text-emerald-100 rounded-tr-none border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.05)]'
+                        : 'bg-cyan-600/15 text-cyan-100 rounded-tr-none border border-cyan-500/20'
+                  }`}>
+                    {msg.message}
+                  </div>
                 </div>
-                <div className={`chat-message-text p-3 rounded-2xl text-xs leading-relaxed ${
-                  msg.sender === 'customer' 
-                    ? 'bg-slate-800/80 text-slate-200 rounded-tl-none border border-slate-700/40' 
-                    : msg.sender === 'bot'
-                      ? 'bg-emerald-600/15 text-emerald-100 rounded-tr-none border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.05)]'
-                      : 'bg-cyan-600/15 text-cyan-100 rounded-tr-none border border-cyan-500/20'
-                }`}>
-                  {msg.message}
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {chatMessages.length === 0 && (
               <div className="text-center py-10 text-slate-600 text-xs italic">
                 No hay historial de chat.
