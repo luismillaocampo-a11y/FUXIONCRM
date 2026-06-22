@@ -82,8 +82,15 @@ class WhatsAppService {
 
               // Extract text directly. No cleaning or sanitization is done here,
               // ensuring full preservation of special characters and utf8mb4 emojis (e.g. 🥺).
-              const text = this.extractMessageText(message);
-              if (!text) continue;
+              console.log('[WhatsAppService] 🔍 Debug - fromMe:', fromMe, 'rawMsg:', JSON.stringify(message));
+              let text = this.extractMessageText(message);
+              if (!text) {
+                console.warn('[WhatsAppService] ⚠️ Texto vacío. fromMe:', fromMe);
+                if (fromMe) {
+                  text = message?.conversation || message?.extendedTextMessage?.text || '';
+                }
+                if (!text) continue;
+              }
 
               let phone = this.getPhoneFromWhatsappId(phoneJid);
               let lid = lidJid ? this.getPhoneFromWhatsappId(lidJid) : null;
@@ -108,6 +115,7 @@ class WhatsAppService {
                 }
               }
 
+              console.log('[WhatsAppService] 📱 Phone:', phone, 'Lid:', lid);
               if (!phone) {
                 console.error('[WhatsAppService] ERROR: No se pudo extraer el remitente del mensaje. Mensaje completo:', JSON.stringify(incoming, null, 2));
                 continue;
@@ -139,6 +147,7 @@ class WhatsAppService {
               }
 
               await db.addMessage(leadId, sender, text, msgId);
+              console.log(`[WhatsAppService] ✅ Mensaje GUARDADO en BD. Lead: ${leadId}, Sender: ${sender}`);
               console.log(`Saved WhatsApp message for lead ${leadId}: sender = ${sender}, text:`, text.slice(0, 100));
             }
           } catch (messageError: any) {
