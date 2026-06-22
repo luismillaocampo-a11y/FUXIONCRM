@@ -62,6 +62,7 @@ export default function CRMDashboard() {
   const chatCountRef = React.useRef(0);
   const lastScrolledLeadIdRef = React.useRef<string | null>(null);
   const selectedLeadRef = React.useRef<any>(null);
+  const forceScrollToBottomRef = React.useRef(false);
 
   const isIdInAssociatedIds = (id: string) => {
     if (!selectedLead) return false;
@@ -111,7 +112,8 @@ export default function CRMDashboard() {
     // Tolerancia de 150px del fondo
     const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 150;
 
-    if (isSentByUs || isAtBottom) {
+    if (isSentByUs || isAtBottom || forceScrollToBottomRef.current) {
+      forceScrollToBottomRef.current = false;
       setTimeout(() => {
         container.scrollTo({
           top: container.scrollHeight,
@@ -1544,6 +1546,7 @@ export default function CRMDashboard() {
                     }
 
                     if (targetLead) {
+                      forceScrollToBottomRef.current = true;
                       setSelectedLead(targetLead);
                     }
                   } catch (err) {
