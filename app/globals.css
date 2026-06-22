@@ -105,3 +105,8 @@ body {
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: #10b981 !important;
 }
+
+/* Chat messages typography hierarchy optimized for complex emojis */
+.chat-message-text {
+  font-family: 'Segoe UI Emoji', 'Segoe UI Symbol', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif !important;
+}

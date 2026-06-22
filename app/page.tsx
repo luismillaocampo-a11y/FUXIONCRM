@@ -1303,7 +1303,7 @@ export default function CRMDashboard() {
                   {msg.sender === 'agent' && <User className="h-3 w-3 text-cyan-400" />}
                   <span className="capitalize">{msg.sender === 'customer' ? 'Cliente' : msg.sender === 'bot' ? 'Asistente IA' : 'Agente'}</span>
                 </div>
-                <div className={`p-3 rounded-2xl text-xs leading-relaxed ${
+                <div className={`chat-message-text p-3 rounded-2xl text-xs leading-relaxed ${
                   msg.sender === 'customer' 
                     ? 'bg-slate-800/80 text-slate-200 rounded-tl-none border border-slate-700/40' 
                     : msg.sender === 'bot'
@@ -1369,7 +1369,7 @@ export default function CRMDashboard() {
                   value={typedMessage}
                   onChange={(e) => setTypedMessage(e.target.value)}
                   placeholder={isSimulatingCustomer ? "Preguntar al bot como Cliente..." : "Responder manualmente como Agente..."}
-                  className="flex-1 pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
+                  className="chat-message-text flex-1 pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
                 />
 
                 {/* Floating Emoji Picker */}
@@ -1475,7 +1475,7 @@ export default function CRMDashboard() {
           <div className="flex-1 min-w-0">
             <span className="text-xs font-bold text-emerald-400 tracking-wider uppercase block">¡Nuevo Mensaje!</span>
             <span className="text-sm font-semibold text-white block mt-1 truncate">{activeNotification.senderName}</span>
-            <p className="text-xs text-slate-200 mt-2 line-clamp-3 leading-relaxed italic bg-slate-950/30 p-2.5 rounded-xl border border-slate-900/60">
+            <p className="chat-message-text text-xs text-slate-200 mt-2 line-clamp-3 leading-relaxed italic bg-slate-950/30 p-2.5 rounded-xl border border-slate-900/60">
               "{activeNotification.message}"
             </p>
             <div className="mt-4 flex gap-2 justify-end">
