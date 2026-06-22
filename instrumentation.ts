@@ -5,6 +5,9 @@ export async function register() {
       const { whatsappService } = await import('./lib/whatsapp-service');
       const { db } = await import('./lib/db');
       
+      // Ejecutar unificación de leads duplicados al arrancar el servidor
+      await db.unifyDuplicateLeads();
+      
       const session = await db.getWhatsappSession('default');
       if (session && session.creds && session.creds.me && session.creds.me.id && !session.creds.me.id.startsWith('placeholder')) {
         console.log('[Instrumentation] Sesión de WhatsApp activa detectada en la base de datos. Auto-inicializando conexión...');

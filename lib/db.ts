@@ -391,6 +391,10 @@ export const db = {
   },
 
   async upsertLead(lead: { id: string; name: string; phone: string; whatsapp_lid?: string | null; status?: string; tags?: string[]; bot_active?: boolean }): Promise<any> {
+    // Normalizar ID del lead de entrada para evitar duplicidad de registros LID/Teléfono
+    const normalizedId = await this.normalizeLeadId(lead.id);
+    lead.id = normalizedId;
+
     const existing = await this.getLeadById(lead.id);
     
     // Merge existing values to prevent losing them on simple upserts
@@ -402,6 +406,7 @@ export const db = {
     const tagsStr = JSON.stringify(tags);
     const botActiveVal = botActive ? 1 : 0;
 
+    let result;
     if (useSupabase) {
       const res = await runSupabaseQuery((c) => c.from('leads').upsert({
         id: lead.id,
@@ -412,10 +417,9 @@ export const db = {
         tags,
         bot_active: botActive
       }).select().single());
-      if (res && !res.error) return res.data;
-      // fall through to sqlite fallback
+      if (res && !res.error) result = res.data;
     }
-    {
+    if (!result) {
       const db = getSqliteDb();
       db.prepare(`
         INSERT INTO leads (id, name, phone, whatsapp_lid, status, tags, bot_active)
@@ -429,8 +433,13 @@ export const db = {
           bot_active = excluded.bot_active,
           updated_at = CURRENT_TIMESTAMP
       `).run(lead.id, lead.name, lead.phone, whatsappLid, status, tagsStr, botActiveVal);
-      return this.getLeadById(lead.id);
+      result = await this.getLeadById(lead.id);
     }
+
+    // Ejecutar unificación en segundo plano para limpiar cualquier duplicado preexistente
+    this.unifyDuplicateLeads().catch(err => console.error('Error al unificar leads en segundo plano:', err));
+
+    return result;
   },
 
   async updateLeadStatus(id: string, status: string): Promise<void> {
@@ -703,7 +712,89 @@ export const db = {
     }
   },
 
-  // --- CHAT MESSAGES ---
+  // --- CHAT MESSAGES & IDENTITY NORMALIZATION ---
+  async normalizeJid(jid: string): Promise<string> {
+    if (!jid || typeof jid !== 'string') return jid;
+    if (jid.endsWith('@lid')) {
+      const lid = jid.split('@')[0];
+      const mappedLeadId = await this.getLeadIdByWhatsappLid(lid);
+      if (mappedLeadId) {
+        console.log(`[db.normalizeJid] Resolviendo LID JID ${jid} a JID real: ${mappedLeadId}@s.whatsapp.net`);
+        return `${mappedLeadId}@s.whatsapp.net`;
+      }
+    }
+    return jid;
+  },
+
+  async normalizeLeadId(leadId: string): Promise<string> {
+    if (!leadId || typeof leadId !== 'string') return leadId;
+    const clean = leadId.replace(/\D/g, '');
+    const mapped = await this.getLeadIdByWhatsappLid(clean);
+    if (mapped) {
+      console.log(`[db.normalizeLeadId] Resolviendo LID ID ${leadId} a ID real: ${mapped}`);
+      return mapped;
+    }
+    return leadId;
+  },
+
+  async unifyDuplicateLeads(): Promise<void> {
+    try {
+      console.log('[db.unifyDuplicateLeads] Iniciando escaneo de leads duplicados...');
+      let leads: any[] = [];
+      if (useSupabase) {
+        const { data, error } = await getSupabase().from('leads').select('*');
+        if (!error && data) leads = data;
+      } else {
+        const db = getSqliteDb();
+        leads = db.prepare('SELECT * FROM leads').all();
+      }
+
+      for (const lead of leads) {
+        const isLid = lead.id.startsWith('1415') || (lead.phone && lead.phone.startsWith('1415'));
+        if (isLid) {
+          const cleanId = lead.id.replace(/\D/g, '');
+          const cleanPhone = lead.phone ? lead.phone.replace(/\D/g, '') : '';
+          
+          const realLead = leads.find((l: any) => 
+            !l.id.startsWith('1415') && 
+            !l.phone.startsWith('1415') && 
+            (l.whatsapp_lid === cleanId || l.whatsapp_lid === cleanPhone || l.phone === cleanId || l.id === cleanId)
+          );
+
+          if (realLead) {
+            console.log(`[db.unifyDuplicateLeads] Duplicado detectado! Fusionando lead LID ${lead.id} con lead real ${realLead.id}`);
+            
+            if (useSupabase) {
+              const { error: msgErr } = await getSupabase().from('chat_messages').update({ lead_id: realLead.id }).eq('lead_id', lead.id);
+              if (msgErr) console.error('Error fusionando mensajes en Supabase:', msgErr);
+
+              const { error: gapErr } = await getSupabase().from('knowledge_gaps').update({ lead_id: realLead.id }).eq('lead_id', lead.id);
+              if (gapErr) console.error('Error fusionando dudas en Supabase:', gapErr);
+
+              const { error: delErr } = await getSupabase().from('leads').delete().eq('id', lead.id);
+              if (delErr) console.error('Error eliminando lead duplicado en Supabase:', delErr);
+
+              if (!realLead.whatsapp_lid) {
+                await getSupabase().from('leads').update({ whatsapp_lid: cleanId }).eq('id', realLead.id);
+              }
+            } else {
+              const db = getSqliteDb();
+              db.prepare('UPDATE chat_messages SET lead_id = ? WHERE lead_id = ?').run(realLead.id, lead.id);
+              db.prepare('UPDATE knowledge_gaps SET lead_id = ? WHERE lead_id = ?').run(realLead.id, lead.id);
+              db.prepare('DELETE FROM leads WHERE id = ?').run(lead.id);
+              if (!realLead.whatsapp_lid) {
+                db.prepare('UPDATE leads SET whatsapp_lid = ? WHERE id = ?').run(cleanId, realLead.id);
+              }
+            }
+          }
+        }
+      }
+      console.log('[db.unifyDuplicateLeads] Escaneo e unificación finalizado.');
+    } catch (e) {
+      console.error('Error unificando leads duplicados:', e);
+    }
+  },
+
   IDENTITY_MAPPING: {
     '51955252932': ['51955252932', '955252932'],
     '955252932': ['51955252932', '955252932'],
@@ -715,7 +806,6 @@ export const db = {
     const ids = new Set<string>();
     ids.add(leadId);
     try {
-      // 1. Consultar tabla de equivalencias estática (Identity Mapping)
       const staticEquivalents = this.IDENTITY_MAPPING[leadId] || this.IDENTITY_MAPPING[leadId.replace(/\D/g, '')];
       if (staticEquivalents) {
         staticEquivalents.forEach(id => ids.add(id));
@@ -748,7 +838,6 @@ export const db = {
         if (lead.phone) ids.add(lead.phone);
         if (lead.whatsapp_lid) ids.add(lead.whatsapp_lid);
 
-        // Agregar números normalizados estrictamente vinculados al número de 9 dígitos del lead
         const cleanPhone = lead.phone ? lead.phone.replace(/\D/g, '') : '';
         if (cleanPhone) {
           ids.add(cleanPhone);
@@ -766,7 +855,8 @@ export const db = {
   },
 
   async getMessages(leadId: string): Promise<any[]> {
-    const ids = await this.getAssociatedIds(leadId);
+    const normalizedId = await this.normalizeLeadId(leadId);
+    const ids = await this.getAssociatedIds(normalizedId);
     let messages: any[] = [];
     if (useSupabase) {
       const { data, error } = await getSupabase().from('chat_messages').select('*').in('lead_id', ids).order('created_at', { ascending: true });
@@ -777,16 +867,17 @@ export const db = {
       const placeholders = ids.map(() => '?').join(',');
       messages = db.prepare(`SELECT * FROM chat_messages WHERE lead_id IN (${placeholders}) ORDER BY created_at ASC`).all(...ids);
     }
-    console.log(`[db.getMessages] Búsqueda de mensajes para leadId: ${leadId}. IDs asociados: ${JSON.stringify(ids)}. Mensajes encontrados: ${messages.length}`);
+    console.log(`[db.getMessages] Búsqueda de mensajes para leadId: ${leadId} (normalizado: ${normalizedId}). IDs asociados: ${JSON.stringify(ids)}. Mensajes encontrados: ${messages.length}`);
     return messages;
   },
 
   async addMessage(leadId: string, sender: string, message: string): Promise<any> {
+    const normalizedId = await this.normalizeLeadId(leadId);
     const id = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     if (useSupabase) {
       const { data, error } = await getSupabase().from('chat_messages').insert({
         id,
-        lead_id: leadId,
+        lead_id: normalizedId,
         sender,
         message,
         is_read: false
@@ -798,13 +889,14 @@ export const db = {
       db.prepare(`
         INSERT INTO chat_messages (id, lead_id, sender, message, is_read)
         VALUES (?, ?, ?, ?, 0)
-      `).run(id, leadId, sender, message);
+      `).run(id, normalizedId, sender, message);
       return db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id);
     }
   },
 
   async markMessagesAsRead(leadId: string): Promise<void> {
-    const ids = await this.getAssociatedIds(leadId);
+    const normalizedId = await this.normalizeLeadId(leadId);
+    const ids = await this.getAssociatedIds(normalizedId);
     if (useSupabase) {
       const { error } = await getSupabase()
         .from('chat_messages')
@@ -820,7 +912,8 @@ export const db = {
   },
 
   async deleteChatMessages(leadId: string): Promise<void> {
-    const ids = await this.getAssociatedIds(leadId);
+    const normalizedId = await this.normalizeLeadId(leadId);
+    const ids = await this.getAssociatedIds(normalizedId);
     if (useSupabase) {
       const { error } = await getSupabase().from('chat_messages').delete().in('lead_id', ids);
       if (error) throw error;

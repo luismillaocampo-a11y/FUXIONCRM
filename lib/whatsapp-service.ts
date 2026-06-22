@@ -88,14 +88,12 @@ class WhatsAppService {
               let phone = this.getPhoneFromWhatsappId(phoneJid);
               let lid = lidJid ? this.getPhoneFromWhatsappId(lidJid) : null;
 
-              // Si el ID principal de comunicación viene en formato LID (termina en @lid), 
-              // intentamos resolver su equivalente de número real mapeado en la BD
+              // Normalización Universal de JID tipo LID
               if (phoneJid.endsWith('@lid') && phone) {
-                const mappedLeadId = await db.getLeadIdByWhatsappLid(phone);
-                if (mappedLeadId) {
-                  console.log(`[WhatsAppService] Resolviendo LID ${phone} a número real mapeado: ${mappedLeadId}`);
+                const normalizedPhoneJid = await db.normalizeJid(phoneJid);
+                if (normalizedPhoneJid !== phoneJid) {
                   lid = phone;
-                  phone = mappedLeadId;
+                  phone = this.getPhoneFromWhatsappId(normalizedPhoneJid);
                 }
               }
 

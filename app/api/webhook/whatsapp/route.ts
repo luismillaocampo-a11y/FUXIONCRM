@@ -204,14 +204,12 @@ export async function POST(request: Request) {
       phone = getPhoneFromWhatsappId(senderJid);
     }
 
-    // Si el ID principal de comunicación viene en formato LID (termina en @lid), 
-    // intentamos resolver su equivalente de número real mapeado en la BD
+    // Normalización Universal de JID tipo LID
     if (phoneJid.endsWith('@lid') && phone) {
-      const mappedLeadId = await db.getLeadIdByWhatsappLid(phone);
-      if (mappedLeadId) {
-        console.log(`[webhook/whatsapp] Resolviendo LID ${phone} a número real mapeado: ${mappedLeadId}`);
+      const normalizedPhoneJid = await db.normalizeJid(phoneJid);
+      if (normalizedPhoneJid !== phoneJid) {
         lid = phone;
-        phone = mappedLeadId;
+        phone = getPhoneFromWhatsappId(normalizedPhoneJid);
       }
     }
 
