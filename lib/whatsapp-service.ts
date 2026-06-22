@@ -77,6 +77,8 @@ class WhatsAppService {
               if (incoming.key?.fromMe) continue;
               if (message.protocolMessage || message.messageStubType) continue;
 
+              // Extract text directly. No cleaning or sanitization is done here,
+              // ensuring full preservation of special characters and utf8mb4 emojis (e.g. 🥺).
               const text = this.extractMessageText(message);
               if (!text) continue;
 

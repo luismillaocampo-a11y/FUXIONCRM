@@ -17,7 +17,18 @@ function getSupabaseClient() {
     if (!supabaseUrl || !supabaseServiceKey) {
       console.warn('[webhook/whatsapp] Warning: Supabase URL or Service Key is missing. Webhook database operations might fail.');
     }
-    cachedSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Explicitly configure connection to accept and send UTF-8 for utf8mb4 emoji support
+    cachedSupabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        persistSession: false
+      },
+      global: {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept-Charset': 'utf-8'
+        }
+      }
+    });
   }
   return cachedSupabase;
 }
@@ -206,6 +217,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Ignored: Group or broadcast message' });
     }
 
+    // Extract text directly. No cleaning, stripping, or sanitization is done to the message content,
+    // ensuring complete support for special characters and complex utf8mb4 emojis (e.g. 🥺).
     const messageText = extractMessageText(messageObj);
     if (!messageText) {
       console.log('[webhook/whatsapp] Ignored: No text extractable from message');

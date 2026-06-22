@@ -172,7 +172,17 @@ function getSqliteDb() {
 
 // Supabase Client instance (initialize conditionally to prevent build-time crashes when variables are not configured yet)
 export let supabase: any = (useSupabase && supabaseUrl && supabaseAnonKey) 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false
+      },
+      global: {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept-Charset': 'utf-8'
+        }
+      }
+    }) 
   : null;
 
 // Helper to run Supabase queries and gracefully fallback to SQLite on auth errors

@@ -22,6 +22,12 @@ if (supabaseUrl && supabaseAnonKey) {
   try {
     client = createClient(supabaseUrl, supabaseAnonKey, {
       realtime: { params: { eventsPerSecond: 10 } },
+      global: {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept-Charset': 'utf-8'
+        }
+      }
     });
     if (typeof window !== 'undefined') {
       console.log('✅ [Supabase Browser Diagnostic] Cliente inicializado correctamente para Realtime.');
