@@ -29,10 +29,16 @@ export async function POST(request: Request) {
     let { id, name, phone, status, tags, bot_active } = body;
 
     // Clean phone number to digits only (e.g. remove "+", spaces, dashes)
-    const cleanPhone = phone ? phone.toString().replace(/\D/g, '') : '';
+    let cleanPhone = phone ? phone.toString().replace(/\D/g, '') : '';
+    if (cleanPhone.length === 9 && cleanPhone.startsWith('9')) {
+      cleanPhone = '51' + cleanPhone;
+    }
     
     // Standardize ID to be the clean phone number if it's a new lead (starts with lead-)
-    const cleanId = (id && id.toString().startsWith('lead-') && cleanPhone) ? cleanPhone : id;
+    let cleanId = (id && id.toString().startsWith('lead-') && cleanPhone) ? cleanPhone : id;
+    if (cleanId && typeof cleanId === 'string' && cleanId.length === 9 && cleanId.startsWith('9')) {
+      cleanId = '51' + cleanId;
+    }
 
     if (!cleanId) {
       return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });

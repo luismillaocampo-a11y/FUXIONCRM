@@ -557,7 +557,11 @@ export default function CRMDashboard() {
     e.preventDefault();
     if (!newLeadName.trim() || !newLeadPhone.trim()) return;
 
-    const cleanPhone = newLeadPhone.replace(/\D/g, '');
+    let cleanPhone = newLeadPhone.replace(/\D/g, '');
+    if (cleanPhone.length === 9 && cleanPhone.startsWith('9')) {
+      cleanPhone = '51' + cleanPhone;
+    }
+
     if (!cleanPhone) {
       alert('Por favor, ingresa un número de teléfono válido.');
       return;
@@ -1409,23 +1413,30 @@ export default function CRMDashboard() {
             <div className="mt-4 flex gap-2 justify-end">
               <button
                 onClick={async () => {
-                  const leadId = activeNotification.leadId;
+                  const rawLeadId = activeNotification.leadId;
                   const senderName = activeNotification.senderName;
+                  
+                  // Limpiar número en formato de puros dígitos con código de país 51 por defecto si tiene 9 dígitos
+                  let cleanLeadId = rawLeadId.replace(/\D/g, '');
+                  if (cleanLeadId.length === 9 && cleanLeadId.startsWith('9')) {
+                    cleanLeadId = '51' + cleanLeadId;
+                  }
+
                   try {
                     const res = await fetch('/api/leads');
                     const leadsData = await res.json();
                     const list = Array.isArray(leadsData) ? leadsData : [];
-                    let targetLead = list.find((l: any) => l.id === leadId);
+                    let targetLead = list.find((l: any) => l.id === cleanLeadId || l.phone === cleanLeadId);
 
                     if (!targetLead) {
-                      console.log('Creando lead de forma automática desde notificación:', leadId);
+                      console.log('Creando lead de forma automática desde notificación:', cleanLeadId);
                       const createRes = await fetch('/api/leads', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                          id: leadId,
-                          name: senderName || `Cliente (+${leadId})`,
-                          phone: leadId,
+                          id: cleanLeadId,
+                          name: senderName || `Cliente (+${cleanLeadId})`,
+                          phone: cleanLeadId,
                           status: 'New',
                           tags: [],
                           bot_active: true

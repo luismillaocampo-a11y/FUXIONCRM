@@ -27,7 +27,10 @@ function getSupabaseClient() {
 function getPhoneFromWhatsappId(id: string): string | null {
   if (!id || typeof id !== 'string') return null;
   const raw = id.split('@')[0] || '';
-  const digits = raw.replace(/\D/g, '');
+  let digits = raw.replace(/\D/g, '');
+  if (digits.length === 9 && digits.startsWith('9')) {
+    digits = '51' + digits;
+  }
   return digits.length > 0 ? digits : null;
 }
 

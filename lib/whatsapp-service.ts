@@ -34,15 +34,7 @@ class WhatsAppService {
       this.wasConnected = false;
     }
 
-    if (this.socket) {
-      console.log('[WhatsAppService] Socket existente detectado en memoria. Desconectando para asegurar una única sesión activa...');
-      try {
-        this.socket.end();
-      } catch (e) {}
-      this.socket = null;
-      this.initPromise = null;
-      this.wasConnected = false;
-    }
+    if (this.socket) return;
 
     if (this.initPromise) return this.initPromise;
 
@@ -208,7 +200,10 @@ class WhatsAppService {
   private getPhoneFromWhatsappId(id: string): string | null {
     if (!id || typeof id !== 'string') return null;
     const raw = id.split('@')[0] || '';
-    const digits = raw.replace(/\D/g, '');
+    let digits = raw.replace(/\D/g, '');
+    if (digits.length === 9 && digits.startsWith('9')) {
+      digits = '51' + digits;
+    }
     return digits.length > 0 ? digits : null;
   }
 
