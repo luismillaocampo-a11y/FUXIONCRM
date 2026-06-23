@@ -408,11 +408,9 @@ class WhatsAppService {
       if (nextEdge) {
         const nextNode = nodes.find((n: any) => n.id === nextEdge.target);
         if (nextNode?.type === 'buttons') {
-          const buttons = nextNode.data.buttons || [];
-          // Enviar usando botones nativos de WhatsApp en vez de texto plano
-          await this.sendWhatsAppButtons(phone, msgText, buttons);
+          const btnText = (nextNode.data.buttons || []).map((b: string, i: number) => `👉 *${i+1}.* ${b}`).join('\n');
+          msgText = `${msgText}\n\n${btnText}`;
           this.flowState.set(leadId, nextNode.id); 
-          return msgText; // Retornar sin usar sendMessageToPhone
         } else {
           this.flowState.set(leadId, nextEdge.target); 
         }
