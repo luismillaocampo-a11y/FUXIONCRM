@@ -1,11 +1,24 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { db } from './db';
+import Groq from 'groq-sdk';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 const hasApiKey = Boolean(apiKey);
 
 // Initialize Gemini SDK if API key is present
 const genAI = hasApiKey ? new GoogleGenerativeAI(apiKey) : null;
+
+let groqClient: any = null;
+let hasGroqKey = false;
+if (process.env.GROQ_API_KEY) {
+  try {
+    groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    hasGroqKey = true;
+    console.log('Groq SDK initialized successfully');
+  } catch (e) {
+    console.error('Groq init error:', e);
+  }
+}
 
 /**
  * Summarizes/Extracts text from uploaded files (multimodal support)
@@ -137,6 +150,22 @@ export async function queryKnowledgeBase(
     ${userQuestion}
   `;
 
+  // Priorizar Groq (Gratis, rapidísimo, sin límites)
+  if (hasGroqKey && groqClient) {
+    try {
+      const chatCompletion = await groqClient.chat.completions.create({
+        messages: [{ role: 'user', content: systemInstructions }],
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.2,
+        max_tokens: 300,
+      });
+      return chatCompletion.choices[0]?.message?.content?.trim() || '[UNKNOWN]';
+    } catch (error: any) {
+      console.error('Groq query error:', error?.message);
+    }
+  }
+
+  // Respaldo a Gemini si Groq falla
   if (hasApiKey && genAI) {
     try {
       const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
