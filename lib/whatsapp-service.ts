@@ -174,7 +174,7 @@ class WhatsAppService {
               // ==========================================
               if (sender === 'customer' && leadExists?.bot_active) {
                 try {
-                  const flowContext = { overrideText: null };
+                  const flowContext: { overrideText: string | null; outOfMenuContext?: boolean } = { overrideText: null };
                   const flowReply = await this.executeActiveFlow(leadId, text, phone, flowContext);
                   
                   if (flowReply) {
@@ -344,7 +344,7 @@ class WhatsAppService {
   }
 
   // --- MOTOR DE FLUJOS BACKEND ---
-  private async executeActiveFlow(leadId: string, text: string, phone: string, flowContext: { overrideText: string | null }): Promise<string | null> {
+  private async executeActiveFlow(leadId: string, text: string, phone: string, flowContext: { overrideText: string | null; outOfMenuContext?: boolean }): Promise<string | null> {
     const flow = await db.getActiveFlow();
     if (!flow || !flow.nodes || !flow.edges) return null;
 
@@ -389,7 +389,25 @@ class WhatsAppService {
           }
         }
       }
-      this.flowState.delete(leadId);
+      // SI ESCRIBIÓ ALGO QUE NO ES UN BOTÓN: 
+      // Solo reiniciar si es una palabra clave EXACTA y corta (evitar cruzar saludos si preguntan "hola, cuanto cuesta X")
+      const triggerNode = nodes.find((n: any) => n.type === 'trigger');
+      const triggerKeywords = (triggerNode?.data?.keyword || '').split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
+      const cleanText = text.toLowerCase().trim();
+      
+      const isExactKeyword = triggerKeywords.some((k: string) => cleanText === k || (cleanText.length <= k.length + 3 && cleanText.includes(k)));
+      
+      if (isExactKeyword) {
+        this.flowState.delete(leadId);
+        const edge = edges.find((e: any) => e.source === triggerNode.id);
+        if (edge) {
+          this.flowState.set(leadId, edge.target);
+          return await this.processFlowNode(leadId, edge.target, nodes, edges, phone);
+        }
+      }
+
+      // Si no es palabra clave exacta, es una pregunta. Dejar que Gemini responda sin perder el menú.
+      flowContext.outOfMenuContext = true;
       return null; 
     }
   }
