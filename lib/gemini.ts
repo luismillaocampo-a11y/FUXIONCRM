@@ -18,7 +18,7 @@ export async function analyzeMultimediaFile(
 ): Promise<{ content: string; summary: string }> {
   if (hasApiKey && genAI) {
     try {
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
       
       // Convert file buffer to Gemini Part
       const mimeTypes: { [key: string]: string } = {
@@ -139,7 +139,7 @@ export async function queryKnowledgeBase(
 
   if (hasApiKey && genAI) {
     try {
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
       const result = await model.generateContent(systemInstructions);
       const text = result.response.text().trim();
       return text;
