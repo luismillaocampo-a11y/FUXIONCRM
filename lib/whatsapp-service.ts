@@ -397,9 +397,11 @@ class WhatsAppService {
       if (nextEdge) {
         const nextNode = nodes.find((n: any) => n.id === nextEdge.target);
         if (nextNode?.type === 'buttons') {
-          const btnText = (nextNode.data.buttons || []).map((b: string, i: number) => `👉 *${i+1}.* ${b}`).join('\n');
-          msgText = `${msgText}\n\n${btnText}`;
+          const buttons = nextNode.data.buttons || [];
+          // Enviar usando botones nativos de WhatsApp en vez de texto plano
+          await this.sendWhatsAppButtons(phone, msgText, buttons);
           this.flowState.set(leadId, nextNode.id); 
+          return msgText; // Retornar sin usar sendMessageToPhone
         } else {
           this.flowState.set(leadId, nextEdge.target); 
         }
@@ -432,6 +434,29 @@ class WhatsAppService {
       throw new Error('WhatsApp socket not initialized');
     }
     return this.socket.sendMessage(jid, { text: text.toString().trim() });
+  }
+
+  public async sendWhatsAppButtons(phone: string, bodyText: string, buttonTexts: string[]) {
+    if (!this.socket) await this.initialize();
+    if (!this.socket) throw new Error('WhatsApp socket not initialized');
+    
+    const jid = this.getWhatsappJid(phone);
+    
+    // WhatsApp permite máximo 3 botones
+    const buttons = buttonTexts.slice(0, 3).map((text, index) => ({
+      buttonId: `btn-${index}`,
+      buttonText: { displayText: text },
+      type: 1
+    }));
+
+    return this.socket.sendMessage(jid, {
+      buttonsMessage: {
+        contentText: bodyText,
+        footerText: 'Fuxion Flow CRM',
+        buttons: buttons,
+        headerType: 1
+      }
+    });
   }
 
   public async sendMessageToLead(leadId: string, text: string) {

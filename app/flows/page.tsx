@@ -186,6 +186,7 @@ export default function FlowBuilder() {
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
   const [flowName, setFlowName] = useState('Flujo de Ventas Fuxion Flow');
   const [saveLoading, setSaveLoading] = useState(false);
+  const messageTextareaRef = React.useRef<HTMLTextAreaElement>(null);
 
   // Estado de la Simulación
   const [showSimulator, setShowSimulator] = useState(false);
@@ -712,9 +713,20 @@ export default function FlowBuilder() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Texto del Mensaje</label>
                   <textarea
+                    ref={messageTextareaRef}
                     rows={6}
                     value={selectedNode.data.message || ''}
-                    onChange={(e) => updateNodeData({ message: e.target.value })}
+                    onChange={(e) => {
+                      const cursorPos = e.target.selectionStart;
+                      updateNodeData({ message: e.target.value });
+                      // Restaurar posición del cursor después de que React actualice el estado
+                      requestAnimationFrame(() => {
+                        if (messageTextareaRef.current) {
+                          messageTextareaRef.current.selectionStart = cursorPos;
+                          messageTextareaRef.current.selectionEnd = cursorPos;
+                        }
+                      });
+                    }}
                     placeholder="Escribe el mensaje de WhatsApp que recibirá el cliente..."
                     className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-blue-500/50"
                   />
