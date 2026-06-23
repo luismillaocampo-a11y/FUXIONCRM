@@ -22,6 +22,7 @@ class WhatsAppService {
   private isResetting = false;
   private wasConnected = false;
   private flowState = new Map<string, string>(); // Guarda en qué nodo del flujo está cada cliente
+  private recentBotMessages = new Set<string>();
 
   public async initialize(force: boolean = false) {
     if (force) {
@@ -141,6 +142,13 @@ class WhatsAppService {
               const leadId = phone;
               const leadName = incoming.pushName || `WhatsApp ${phone}`;
               const sender = fromMe ? 'agent' : 'customer';
+
+              // FILTRO ANTI-DUPLICADOS: Ignorar el eco de WhatsApp si el bot acaba de enviar este mensaje
+              if (fromMe && text && this.recentBotMessages.has(text.substring(0, 50))) {
+                console.log('[WhatsAppService] ⏭️ Eco del bot detectado, ignorando duplicado.');
+                continue;
+              }
+
               const msgId = incoming.key?.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
               // Guardar/actualizar cliente si no existe o si el mensaje es del cliente para actualizar sus datos
@@ -179,6 +187,7 @@ class WhatsAppService {
                     const recentMsgs = await db.getMessages(leadId);
                     const history = recentMsgs.slice(-5).map((m: any) => ({ sender: m.sender, message: m.message }));
                     const reply = await queryKnowledgeBase(textForAI, history);
+                    console.log(`[WhatsAppService] 🔑 Gemini respondió: ${reply.substring(0, 80)}`);
 
                     if (reply.trim() === '[UNKNOWN]') {
                       console.log(`[WhatsAppService] ⚠️ IA no pudo responder. Activando Shadow Mode para ${leadId}`);
@@ -194,6 +203,8 @@ class WhatsAppService {
 
                       const fallbackReply = 'Lo siento, no tengo esa información en este momento. Un agente humano revisará su pregunta y le responderá a la brevedad.';
                       await db.addMessage(leadId, 'bot', fallbackReply);
+                      this.recentBotMessages.add(fallbackReply.substring(0, 50));
+                      setTimeout(() => this.recentBotMessages.delete(fallbackReply.substring(0, 50)), 6000);
                       await this.sendMessageToPhone(phone, fallbackReply);
                     } else {
                       console.log(`[WhatsAppService] 🤖 Bot (Gemini) respondiendo a ${leadId}: ${reply.slice(0, 60)}...`);
