@@ -589,6 +589,7 @@ export default function FlowBuilder() {
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             nodeTypes={nodeTypes}
+            deleteKeyCode={['Delete', 'Backspace']}
             fitView
           >
             <Controls className="!bg-slate-900 !border-slate-800 !text-white !fill-white" />
