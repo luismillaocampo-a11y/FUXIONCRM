@@ -258,6 +258,17 @@ export async function POST(request: Request) {
     if (fromMe) {
       console.log(`[webhook/whatsapp] Logging outgoing message: direction = 'outgoing', sender = 'agent', source = 'mobile_device' for lead ${leadId}`);
 
+      // Check if this outgoing message is a duplicate of a recent bot message to avoid double-logging
+      const recentMessages = await db.getMessages(leadId);
+      const isBotDuplicate = recentMessages.slice(-3).some(
+        (m: any) => m.sender === 'bot' && m.message.trim() === messageText.trim()
+      );
+
+      if (isBotDuplicate) {
+        console.log(`[webhook/whatsapp] Outgoing message is a duplicate of a recent bot response. Skipping agent log.`);
+        return NextResponse.json({ success: true, message: 'Ignored: Bot loopback message' });
+      }
+
       // Ensure lead exists
       await db.upsertLead({
         id: leadId,
