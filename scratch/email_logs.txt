@@ -114,3 +114,90 @@ NutraFlow Automation Bot
 
 ========================================
 
+
+========================================
+TIMESTAMP: 2026-06-24T01:51:58.371Z
+TO: admin@fuxionflow.com
+FROM: alerts@fuxionflow.com (SIMULATED)
+SUBJECT: 🚨 KNOWLEDGE GAP DETECTED: Chat paused for Luiz Milla
+----------------------------------------
+BODY:
+
+Dear Admin,
+
+A customer asked a question that the AI bot could not answer based on the knowledge base.
+The bot has been PAUSED (Shadow Mode active) for this customer.
+
+Lead Details:
+- Name: Luiz Milla
+- Phone: 51955252932
+
+Unanswered Question:
+"producto"
+
+Action Required:
+Go to the CRM Dashboard under "Knowledge Gaps", provide the answer, and reactivate the bot.
+
+Best regards,
+Fuxion Flow Automation Bot
+
+========================================
+
+
+========================================
+TIMESTAMP: 2026-06-24T02:03:34.451Z
+TO: admin@fuxionflow.com
+FROM: alerts@fuxionflow.com (SIMULATED)
+SUBJECT: 🚨 KNOWLEDGE GAP DETECTED: Chat paused for Luiz Milla
+----------------------------------------
+BODY:
+
+Dear Admin,
+
+A customer asked a question that the AI bot could not answer based on the knowledge base.
+The bot has been PAUSED (Shadow Mode active) for this customer.
+
+Lead Details:
+- Name: Luiz Milla
+- Phone: 51955252932
+
+Unanswered Question:
+"quiero prunex"
+
+Action Required:
+Go to the CRM Dashboard under "Knowledge Gaps", provide the answer, and reactivate the bot.
+
+Best regards,
+Fuxion Flow Automation Bot
+
+========================================
+
+
+========================================
+TIMESTAMP: 2026-06-24T02:03:53.369Z
+TO: admin@fuxionflow.com
+FROM: alerts@fuxionflow.com (SIMULATED)
+SUBJECT: 🚨 KNOWLEDGE GAP DETECTED: Chat paused for Luiz Milla
+----------------------------------------
+BODY:
+
+Dear Admin,
+
+A customer asked a question that the AI bot could not answer based on the knowledge base.
+The bot has been PAUSED (Shadow Mode active) for this customer.
+
+Lead Details:
+- Name: Luiz Milla
+- Phone: 51955252932
+
+Unanswered Question:
+"prunex"
+
+Action Required:
+Go to the CRM Dashboard under "Knowledge Gaps", provide the answer, and reactivate the bot.
+
+Best regards,
+Fuxion Flow Automation Bot
+
+========================================
+

@@ -551,6 +551,16 @@ export const db = {
       db.prepare('UPDATE flows SET is_active = 1 WHERE id = ?').run(id);
     }
   },
+  
+  async deactivateFlow(id: string): Promise<void> {
+    if (useSupabase) {
+      const { error } = await getSupabase().from('flows').update({ is_active: false }).eq('id', id);
+      if (error) throw error;
+    } else {
+      const db = getSqliteDb();
+      db.prepare('UPDATE flows SET is_active = 0 WHERE id = ?').run(id);
+    }
+  },
 
   async getActiveFlow(): Promise<any> {
     if (useSupabase) {

@@ -15,9 +15,9 @@ import {
   MarkerType
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { 
-  Save, Play, Plus, Trash2, ArrowLeft, Settings, 
-  HelpCircle, Calendar, Bot, MessageSquare, AlertCircle, 
+import {
+  Save, Play, Plus, Trash2, ArrowLeft, Settings,
+  HelpCircle, Calendar, Bot, MessageSquare, AlertCircle,
   ChevronRight, RefreshCw, Send, Check, X
 } from 'lucide-react';
 import Link from 'next/link';
@@ -60,25 +60,25 @@ function MessageNode({ data }: any) {
 // 3. NODO BOTONES DE SELECCIÓN (INTERACTIVE BUTTONS)
 function ButtonsNode({ data }: any) {
   const buttonsList = data.buttons || [];
-  
+
   return (
     <div className="bg-[#11241a] border border-emerald-500/40 rounded-xl p-4 w-60 shadow-lg text-slate-200">
       <Handle type="target" position={Position.Top} id="input" />
       <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2 mb-2">
         <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">🔘 Botones de Opción</span>
       </div>
-      
+
       <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider mb-2">Lista de opciones:</p>
       <div className="space-y-1.5">
         {buttonsList.map((btn: string, idx: number) => (
           <div key={idx} className="relative flex items-center justify-between px-2.5 py-1.5 bg-slate-950/60 rounded border border-slate-800 text-xs">
             <span className="text-slate-300">{btn}</span>
-            <span className="text-[9px] text-slate-500 font-mono font-bold">#{idx+1}</span>
-            <Handle 
-              type="source" 
-              position={Position.Right} 
-              id={`btn-${idx}`} 
-              style={{ top: '50%', right: -12 }} 
+            <span className="text-[9px] text-slate-500 font-mono font-bold">#{idx + 1}</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={`btn-${idx}`}
+              style={{ top: '50%', right: -12 }}
             />
           </div>
         ))}
@@ -124,10 +124,10 @@ function DeliveryEngineNode({ data }: any) {
   // Cálculo dinámico para la previsualización del componente
   const getDeliveryDates = () => {
     const today = new Date();
-    
+
     const d24 = new Date(today);
     d24.setDate(today.getDate() + 1);
-    
+
     const d48 = new Date(today);
     d48.setDate(today.getDate() + 2);
 
@@ -147,7 +147,7 @@ function DeliveryEngineNode({ data }: any) {
         <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">🚚 Programar Envío</span>
       </div>
       <p className="text-[10px] text-slate-400 mb-2">Ofrece opciones de entrega dinámicas basadas en la fecha actual:</p>
-      
+
       <div className="space-y-1 text-[11px] font-mono text-yellow-200/90 bg-slate-950/60 p-2 rounded-lg">
         <div className="flex justify-between">
           <span>• Rango 24 Horas:</span>
@@ -158,7 +158,7 @@ function DeliveryEngineNode({ data }: any) {
           <span className="font-bold capitalize">{dates.t48}</span>
         </div>
       </div>
-      
+
       <Handle type="source" position={Position.Bottom} id="output" />
     </div>
   );
@@ -177,22 +177,24 @@ export default function FlowBuilder() {
   // Lista de flujos
   const [flows, setFlows] = useState<any[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string>('');
-  
+  const [systemActiveFlowId, setSystemActiveFlowId] = useState<string>('');
+
   // Elementos de React Flow
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
-  
+
   // Configuración del Elemento seleccionado
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
   const [flowName, setFlowName] = useState('Flujo de Ventas Fuxion Flow');
   const [saveLoading, setSaveLoading] = useState(false);
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const messageTextareaRef = React.useRef<HTMLTextAreaElement>(null);
 
   // Estado de la Simulación
   const [showSimulator, setShowSimulator] = useState(false);
   const [simMessages, setSimMessages] = useState<any[]>([]);
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
-  const [simLeadTags, setSimLeadTags] = useState<string[]>(['interested']); 
+  const [simLeadTags, setSimLeadTags] = useState<string[]>(['interested']);
 
   // Carga inicial de los flujos
   const loadFlowsList = async () => {
@@ -200,8 +202,9 @@ export default function FlowBuilder() {
       const res = await fetch('/api/flows');
       const data = await res.json();
       setFlows(data.flows || []);
-      
+
       if (data.activeFlow) {
+        setSystemActiveFlowId(data.activeFlow.id);
         setActiveFlowId(data.activeFlow.id);
         setFlowName(data.activeFlow.name);
         setNodes(data.activeFlow.nodes || []);
@@ -234,10 +237,10 @@ export default function FlowBuilder() {
 
   // Conectar nodos en el canvas
   const onConnect = useCallback(
-    (params: any) => setEdges((eds) => addEdge({ 
-      ...params, 
-      type: 'smoothstep', 
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#475569' } 
+    (params: any) => setEdges((eds) => addEdge({
+      ...params,
+      type: 'smoothstep',
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#475569' }
     }, eds)),
     [setEdges]
   );
@@ -315,7 +318,7 @@ export default function FlowBuilder() {
   };
 
   // Guardar flujo en BD
-  const handleSaveFlow = async (makeActive: boolean = false) => {
+  const handleSaveFlow = async (makeActive?: boolean) => {
     setSaveLoading(true);
     const flowId = activeFlowId || `flow-${Date.now()}`;
     try {
@@ -327,14 +330,22 @@ export default function FlowBuilder() {
           name: flowName,
           nodes,
           edges,
-          makeActive
+          ...(makeActive !== undefined && { makeActive })
         })
       });
       const data = await res.json();
       if (data.success) {
         setActiveFlowId(flowId);
+        if (makeActive === true) {
+          setSystemActiveFlowId(flowId);
+        } else if (makeActive === false) {
+          setSystemActiveFlowId('');
+        }
         loadFlowsList();
-        alert(makeActive ? '¡Flujo activado y publicado!' : '¡Borrador de flujo guardado!');
+        setShowSaveSuccess(true);
+        setTimeout(() => {
+          setShowSaveSuccess(false);
+        }, 3000);
       } else {
         alert(data.error || 'Error al guardar el flujo');
       }
@@ -368,11 +379,11 @@ export default function FlowBuilder() {
   };
 
   // --- INTÉRPRETE Y SIMULADOR DE AUTOMATIZACIONES ---
-  
+
   const startSimulation = () => {
     setShowSimulator(true);
     setSimMessages([]);
-    
+
     const triggerNode = nodes.find(n => n.type === 'trigger');
     if (triggerNode) {
       setCurrentNodeId(triggerNode.id);
@@ -404,7 +415,7 @@ export default function FlowBuilder() {
       if (edge) {
         setTimeout(() => executeSimulationStep(edge.target), 1000);
       } else {
-        const fallbackEdge = edges.find(e => e.source === node.id); 
+        const fallbackEdge = edges.find(e => e.source === node.id);
         if (fallbackEdge) {
           setTimeout(() => executeSimulationStep(fallbackEdge.target), 1000);
         } else {
@@ -415,10 +426,10 @@ export default function FlowBuilder() {
 
     // 2. INTERACTIVE BUTTONS
     else if (node.type === 'buttons') {
-      setSimMessages(prev => [...prev, { 
-        sender: 'bot', 
-        text: 'Selecciona una de las siguientes opciones:', 
-        options: node.data.buttons || [] 
+      setSimMessages(prev => [...prev, {
+        sender: 'bot',
+        text: 'Selecciona una de las siguientes opciones:',
+        options: node.data.buttons || []
       }]);
     }
 
@@ -426,10 +437,10 @@ export default function FlowBuilder() {
     else if (node.type === 'logicJump') {
       const tagToCheck = node.data.tag || '';
       const hasTag = simLeadTags.includes(tagToCheck);
-      
-      setSimMessages(prev => [...prev, { 
-        sender: 'system', 
-        text: `Comprobando etiqueta: "${tagToCheck}". Etiquetas actuales: [${simLeadTags.join(', ')}]. Coincide = ${hasTag ? 'SÍ' : 'NO'}` 
+
+      setSimMessages(prev => [...prev, {
+        sender: 'system',
+        text: `Comprobando etiqueta: "${tagToCheck}". Etiquetas actuales: [${simLeadTags.join(', ')}]. Coincide = ${hasTag ? 'SÍ' : 'NO'}`
       }]);
 
       const handleId = hasTag ? 'yes' : 'no';
@@ -448,12 +459,12 @@ export default function FlowBuilder() {
       const d24 = new Date(today); d24.setDate(today.getDate() + 1);
       const d48 = new Date(today); d48.setDate(today.getDate() + 2);
       const options = { weekday: 'short', month: 'short', day: 'numeric' } as const;
-      
+
       const t24 = d24.toLocaleDateString('es-ES', options);
       const t48 = d48.toLocaleDateString('es-ES', options);
 
-      setSimMessages(prev => [...prev, { 
-        sender: 'bot', 
+      setSimMessages(prev => [...prev, {
+        sender: 'bot',
         text: `Calculamos tus fechas estimadas de envío. Elige el horario conveniente para ti:`,
         options: [`Rango 24 Horas (Entrega el ${t24})`, `Rango 48 Horas (Entrega el ${t48})`]
       }]);
@@ -463,16 +474,16 @@ export default function FlowBuilder() {
   // Recibir texto del cliente en simulador
   const handleSimSendMessage = (text: string) => {
     if (!text.trim()) return;
-    
+
     setSimMessages(prev => [...prev, { sender: 'customer', text }]);
 
     if (currentNodeId) {
       const node = nodes.find(n => n.id === currentNodeId);
-      
+
       if (node && node.type === 'trigger') {
         const keywords = (node.data.keyword || '').split(',').map((k: string) => k.trim().toLowerCase());
         const matches = keywords.some((k: string) => text.toLowerCase().includes(k));
-        
+
         if (matches) {
           setSimMessages(prev => [...prev, { sender: 'system', text: '✅ ¡Palabra clave de disparo identificada!' }]);
           const edge = edges.find(e => e.source === node.id);
@@ -484,7 +495,7 @@ export default function FlowBuilder() {
         } else {
           setSimMessages(prev => [...prev, { sender: 'bot', text: `Error: La frase no coincide con las palabras clave. Intenta escribiendo "${keywords[0] || 'hola'}"` }]);
         }
-      } 
+      }
       else {
         setSimMessages(prev => [...prev, { sender: 'system', text: 'El bot está esperando que selecciones uno de los botones.' }]);
       }
@@ -496,27 +507,27 @@ export default function FlowBuilder() {
   // Clic en las opciones de botón del simulador
   const handleSimChoiceSelect = (choice: string, index: number) => {
     setSimMessages(prev => [...prev, { sender: 'customer', text: choice }]);
-    
+
     if (currentNodeId) {
       const node = nodes.find(n => n.id === currentNodeId);
-      
+
       if (node && node.type === 'buttons') {
         const handleId = `btn-${index}`;
         const edge = edges.find(e => e.source === node.id && e.sourceHandle === handleId);
-        
+
         if (edge) {
           setTimeout(() => executeSimulationStep(edge.target), 800);
         } else {
           setSimMessages(prev => [...prev, { sender: 'system', text: `Conexión ausente para el botón seleccionado: "${choice}"` }]);
           setCurrentNodeId(null);
         }
-      } 
+      }
       else if (node && node.type === 'deliveryEngine') {
-        setSimMessages(prev => [...prev, { 
-          sender: 'bot', 
-          text: `¡Entendido! Seleccionaste: "${choice}". Registramos tu solicitud.` 
+        setSimMessages(prev => [...prev, {
+          sender: 'bot',
+          text: `¡Entendido! Seleccionaste: "${choice}". Registramos tu solicitud.`
         }]);
-        
+
         const edge = edges.find(e => e.source === node.id && e.sourceHandle === 'output');
         if (edge) {
           setTimeout(() => executeSimulationStep(edge.target), 1000);
@@ -527,6 +538,166 @@ export default function FlowBuilder() {
     }
   };
 
+  // Componente de renderizado personalizado para los nodos en el minimapa (Miniatura Realista)
+  const CustomMiniMapNode = useCallback(({ x, y, width, height, selected, id }: any) => {
+    const node = nodes.find((n: any) => n.id === id);
+    if (!node) {
+      return (
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          rx={6}
+          ry={6}
+          fill="#0f172a"
+          stroke="#1e293b"
+          strokeWidth={1}
+        />
+      );
+    }
+
+    let bg = '#0f172a';
+    let stroke = '#1e293b';
+    let icon = '';
+    let title = '';
+
+    switch (node.type) {
+      case 'trigger':
+        bg = '#1e1515';
+        stroke = 'rgba(249, 115, 22, 0.4)';
+        icon = '⚡';
+        title = 'Disparador';
+        break;
+      case 'message':
+        bg = '#11192a';
+        stroke = 'rgba(59, 130, 246, 0.4)';
+        icon = '💬';
+        title = 'Mensaje';
+        break;
+      case 'buttons':
+        bg = '#11241a';
+        stroke = 'rgba(16, 185, 129, 0.4)';
+        icon = '🔘';
+        title = 'Botones';
+        break;
+      case 'logicJump':
+        bg = '#1e132c';
+        stroke = 'rgba(168, 85, 247, 0.4)';
+        icon = '🔀';
+        title = 'Condición';
+        break;
+      case 'deliveryEngine':
+        bg = '#242111';
+        stroke = 'rgba(234, 179, 8, 0.4)';
+        icon = '🚚';
+        title = 'Envío';
+        break;
+    }
+
+    const strokeColor = selected ? stroke.replace('0.4', '1') : stroke;
+    const strokeWidth = selected ? 2.5 : 1.5;
+
+    return (
+      <g>
+        {/* Fondo y borde del nodo */}
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          rx={6}
+          ry={6}
+          fill={bg}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+        />
+
+        {/* Encabezado del nodo (Icono + Título) */}
+        <text
+          x={x + 8}
+          y={y + 18}
+          fill={selected ? '#ffffff' : '#cbd5e1'}
+          fontSize={9}
+          fontWeight="bold"
+          fontFamily="system-ui, sans-serif"
+        >
+          {icon} {title}
+        </text>
+
+        {/* Divisor de encabezado */}
+        <line
+          x1={x + 8}
+          y1={y + 24}
+          x2={x + width - 8}
+          y2={y + 24}
+          stroke={stroke}
+          strokeWidth={1}
+          strokeDasharray="2,2"
+        />
+
+        {/* Previsualización del contenido del nodo */}
+        {node.type === 'trigger' && (
+          <g>
+            <rect x={x + 8} y={y + 30} width={width - 16} height={14} rx={3} fill="rgba(249, 115, 22, 0.05)" stroke="rgba(249, 115, 22, 0.2)" strokeWidth={0.5} />
+            <text x={x + 12} y={y + 40} fill="rgba(249, 115, 22, 0.8)" fontSize={7} fontFamily="monospace" fontWeight="bold">
+              {node.data.keyword ? (node.data.keyword.substring(0, 18) + (node.data.keyword.length > 18 ? '...' : '')) : 'palabra clave'}
+            </text>
+          </g>
+        )}
+
+        {node.type === 'message' && (
+          <g>
+            <rect x={x + 8} y={y + 32} width={width - 16} height={4} rx={1.5} fill="rgba(255,255,255,0.08)" />
+            <rect x={x + 8} y={y + 40} width={width - 32} height={4} rx={1.5} fill="rgba(255,255,255,0.08)" />
+            <rect x={x + 8} y={y + 48} width={width - 24} height={4} rx={1.5} fill="rgba(255,255,255,0.08)" />
+          </g>
+        )}
+
+        {node.type === 'buttons' && (
+          <g>
+            {(node.data.buttons || []).slice(0, 3).map((btn: string, idx: number) => (
+              <rect
+                key={idx}
+                x={x + 8}
+                y={y + 30 + (idx * 11)}
+                width={width - 16}
+                height={8}
+                rx={2}
+                fill="rgba(16, 185, 129, 0.05)"
+                stroke="rgba(16, 185, 129, 0.15)"
+                strokeWidth={0.5}
+              />
+            ))}
+          </g>
+        )}
+
+        {node.type === 'logicJump' && (
+          <g>
+            <rect x={x + 8} y={y + 30} width={width - 16} height={11} rx={2.5} fill="rgba(168, 85, 247, 0.05)" stroke="rgba(168, 85, 247, 0.15)" strokeWidth={0.5} />
+            <text x={x + 11} y={y + 38} fill="rgba(168, 85, 247, 0.8)" fontSize={6} fontFamily="sans-serif">
+              Etiqueta: {node.data.tag || 'ninguna'}
+            </text>
+            <rect x={x + 8} y={y + 45} width={(width - 20) / 2} height={7} rx={1.5} fill="rgba(16, 185, 129, 0.12)" />
+            <rect x={x + 12 + (width - 20) / 2} y={y + 45} width={(width - 20) / 2} height={7} rx={1.5} fill="rgba(239, 68, 68, 0.12)" />
+          </g>
+        )}
+
+        {node.type === 'deliveryEngine' && (
+          <g>
+            <rect x={x + 8} y={y + 30} width={width - 16} height={9} rx={2} fill="rgba(234, 179, 8, 0.05)" />
+            <rect x={x + 12} y={y + 33} width={10} height={3} rx={0.5} fill="rgba(234, 179, 8, 0.3)" />
+            <rect x={x + 26} y={y + 33} width={width - 38} height={3} rx={0.5} fill="rgba(234, 179, 8, 0.15)" />
+
+            <rect x={x + 8} y={y + 42} width={width - 16} height={9} rx={2} fill="rgba(234, 179, 8, 0.05)" />
+            <rect x={x + 12} y={y + 45} width={10} height={3} rx={0.5} fill="rgba(234, 179, 8, 0.3)" />
+            <rect x={x + 26} y={y + 45} width={width - 38} height={3} rx={0.5} fill="rgba(234, 179, 8, 0.15)" />
+          </g>
+        )}
+      </g>
+    );
+  }, [nodes]);
+
   return (
     <div className="flex-1 flex overflow-hidden h-full relative">
       {/* Panel del Lienzo del Creador de Flujos */}
@@ -534,7 +705,7 @@ export default function FlowBuilder() {
         {/* Barra superior de controles */}
         <header className="h-16 flex items-center justify-between px-8 border-b border-slate-800 bg-[#0c0f1d] shrink-0 z-10">
           <div className="flex items-center gap-4">
-            <Link 
+            <Link
               href="/"
               className="p-2 rounded-lg bg-slate-800/40 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 transition flex items-center gap-1 text-xs"
             >
@@ -553,6 +724,11 @@ export default function FlowBuilder() {
           </div>
 
           <div className="flex items-center gap-3">
+            {showSaveSuccess && (
+              <span className="text-xs font-semibold text-emerald-400 transition-all animate-pulse duration-300">
+                ¡Cambio exitoso!
+              </span>
+            )}
             <button
               onClick={() => startSimulation()}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/25 transition"
@@ -563,18 +739,21 @@ export default function FlowBuilder() {
             <button
               onClick={() => handleSaveFlow(false)}
               disabled={saveLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-750 text-white border border-slate-700 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-600 hover:bg-orange-500 text-white border border-slate-700 transition"
             >
               <Save className="h-3.5 w-3.5 text-slate-400" />
-              Guardar borrador
+              Guardar Cambios
             </button>
             <button
-              onClick={() => handleSaveFlow(true)}
+              onClick={() => handleSaveFlow(activeFlowId !== systemActiveFlowId)}
               disabled={saveLoading}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-[0_4px_12px_rgba(16,185,129,0.15)]"
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg text-white transition-all ${activeFlowId === systemActiveFlowId
+                ? 'bg-emerald-500 hover:bg-emerald-600 shadow-[0_4px_12px_rgba(16,185,129,0.15)]'
+                : 'bg-gray-500 hover:bg-gray-600 shadow-[0_4px_12px_rgba(107,114,128,0.15)]'
+                }`}
             >
               <Save className="h-3.5 w-3.5" />
-              Activar Flujo
+              {activeFlowId === systemActiveFlowId ? 'Flujo Activo' : 'Activar Flujo'}
             </button>
           </div>
         </header>
@@ -591,15 +770,42 @@ export default function FlowBuilder() {
             nodeTypes={nodeTypes}
             deleteKeyCode={['Delete', 'Backspace']}
             fitView
+            colorMode="dark"
           >
-            <Controls className="!bg-slate-900 !border-slate-800 !text-white !fill-white" />
-            <MiniMap className="!bg-slate-950/90 !border-slate-800" nodeColor={() => '#1e293b'} />
+            <Controls
+              style={{
+                backgroundColor: '#0f172a',
+                border: '1px solid #1e293b',
+                borderRadius: '8px',
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)',
+                padding: '4px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                ['--xy-controls-button-background' as any]: '#0f172a',
+                ['--xy-controls-button-background-hover' as any]: '#1e293b',
+                ['--xy-controls-button-color' as any]: '#94a3b8',
+                ['--xy-controls-button-color-hover' as any]: '#f8fafc',
+                ['--xy-controls-border-color' as any]: 'transparent',
+              }}
+            />
+            <MiniMap
+              style={{
+                backgroundColor: '#0f172a',
+                border: '1px solid #1e293b',
+                borderRadius: '8px',
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)',
+              }}
+              nodeColor={() => '#f59e0b'}
+              maskColor="rgba(0, 0, 0, 0.6)"
+              nodeComponent={CustomMiniMapNode}
+            />
             <Background color="#334155" gap={16} size={1} />
-            
+
             {/* Panel de Elementos a Agregar */}
             <Panel position="top-left" className="bg-[#0c0f1d]/90 border border-slate-800 p-4 rounded-xl shadow-2xl flex flex-col gap-2.5 z-10 w-52 backdrop-blur">
               <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-850 pb-1.5">Agregar Elementos</h4>
-              
+
               <button
                 onClick={() => addNodeToCanvas('trigger')}
                 className="flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-orange-400 bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/20 rounded-lg transition"
@@ -649,11 +855,10 @@ export default function FlowBuilder() {
                   <button
                     key={f.id}
                     onClick={() => handleLoadFlow(f)}
-                    className={`px-2.5 py-1 rounded text-xs font-semibold ${
-                      activeFlowId === f.id 
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                        : 'bg-slate-800 text-slate-400 border border-transparent hover:text-slate-200'
-                    }`}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold ${activeFlowId === f.id
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      : 'bg-slate-800 text-slate-400 border border-transparent hover:text-slate-200'
+                      }`}
                   >
                     {f.name}
                   </button>
@@ -741,7 +946,7 @@ export default function FlowBuilder() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Botones Interactivos</label>
                   <p className="text-[10px] text-slate-500 leading-normal mb-2">Cada opción creará un conector de salida independiente en el nodo del lienzo.</p>
-                  
+
                   <div className="space-y-2">
                     {(selectedNode.data.buttons || []).map((btn: string, index: number) => (
                       <div key={index} className="flex gap-2 items-center">
@@ -766,7 +971,7 @@ export default function FlowBuilder() {
                         </button>
                       </div>
                     ))}
-                    
+
                     <button
                       onClick={() => {
                         const newBtns = [...(selectedNode.data.buttons || []), `Nueva Opción`];
@@ -845,7 +1050,7 @@ export default function FlowBuilder() {
                 <p className="text-[9px] text-slate-500">Prueba la lógica visual del lienzo en tiempo real</p>
               </div>
             </div>
-            <button 
+            <button
               onClick={() => {
                 setShowSimulator(false);
                 setCurrentNodeId(null);
@@ -872,11 +1077,10 @@ export default function FlowBuilder() {
                       if (has) setSimLeadTags(prev => prev.filter(t => t !== tag));
                       else setSimLeadTags(prev => [...prev, tag]);
                     }}
-                    className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
-                      has 
-                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow' 
-                        : 'bg-slate-800 text-slate-500 border border-transparent hover:text-slate-300'
-                    }`}
+                    className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${has
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow'
+                      : 'bg-slate-800 text-slate-500 border border-transparent hover:text-slate-300'
+                      }`}
                   >
                     {tag}
                   </button>
@@ -895,15 +1099,13 @@ export default function FlowBuilder() {
                     {msg.text}
                   </div>
                 ) : (
-                  <div className={`flex flex-col max-w-[85%] ${
-                    msg.sender === 'customer' ? 'ml-auto items-end' : 'mr-auto items-start'
-                  }`}>
-                    <span className="text-[9px] text-slate-500 capitalize mb-1 px-1">{msg.sender === 'customer' ? 'Cliente' : 'Asistente'}</span>
-                    <div className={`p-2.5 rounded-xl text-xs leading-relaxed ${
-                      msg.sender === 'customer' 
-                        ? 'bg-slate-800 text-slate-200 rounded-tr-none border border-slate-700/50' 
-                        : 'bg-emerald-600/15 text-emerald-100 rounded-tl-none border border-emerald-500/20'
+                  <div className={`flex flex-col max-w-[85%] ${msg.sender === 'customer' ? 'ml-auto items-end' : 'mr-auto items-start'
                     }`}>
+                    <span className="text-[9px] text-slate-500 capitalize mb-1 px-1">{msg.sender === 'customer' ? 'Cliente' : 'Asistente'}</span>
+                    <div className={`p-2.5 rounded-xl text-xs leading-relaxed ${msg.sender === 'customer'
+                      ? 'bg-slate-800 text-slate-200 rounded-tr-none border border-slate-700/50'
+                      : 'bg-emerald-600/15 text-emerald-100 rounded-tl-none border border-emerald-500/20'
+                      }`}>
                       {msg.text}
                     </div>
 
@@ -935,7 +1137,7 @@ export default function FlowBuilder() {
                 💡 Escribe un mensaje que contenga la palabra clave del disparador para iniciar la secuencia de conversación.
               </div>
             )}
-            
+
             <div className="flex gap-2">
               <input
                 type="text"
@@ -956,7 +1158,7 @@ export default function FlowBuilder() {
                 Reset
               </button>
             </div>
-            
+
             <button
               onClick={() => {
                 const trigger = nodes.find(n => n.type === 'trigger');

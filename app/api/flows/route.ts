@@ -25,8 +25,12 @@ export async function POST(request: Request) {
       savedFlow = await db.saveFlow(id, name, nodes, edges);
     }
 
-    if (makeActive) {
-      await db.setActiveFlow(id);
+    if (makeActive !== undefined) {
+      if (makeActive) {
+        await db.setActiveFlow(id);
+      } else {
+        await db.deactivateFlow(id);
+      }
     }
 
     return NextResponse.json({ success: true, flow: savedFlow });
