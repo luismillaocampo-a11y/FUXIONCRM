@@ -129,26 +129,35 @@ export async function queryKnowledgeBase(
     .map((c) => `${c.sender.toUpperCase()}: ${c.message}`)
     .join('\n');
 
-  const systemInstructions = `
-    You are an automated customer service assistant for "Fuxion Flow CRM".
-    You must answer the customer's question politely and concisely, using ONLY the facts listed in the context below.
+  const systemInstructions = `Actúa como el asistente de ventas experto de 'Fuxion Flow'. Tu objetivo es responder consultas de clientes de forma extremadamente concisa (máximo 3 frases), profesional y organizada.
 
-    CRITICAL RULES:
-    1. If the answer to the customer's question cannot be found or deduced with absolute certainty from the context below, you MUST reply with exactly: [UNKNOWN]
-    2. Do NOT mention the word "context" or say "based on the provided files". Act as a live chatbot.
-    3. Do NOT make up any details. If they ask for things like personal discounts, specialized support, or information not in the files, reply with exactly: [UNKNOWN]
-    4. Keep answers short, ideally 1 to 3 sentences, and professional.
+REGLAS DE ORO:
 
-    ---
-    KNOWLEDGE BASE CONTEXT:
-    ${contextBlock}
-    ---
-    CONVERSATION HISTORY:
-    ${formattedHistory}
-    ---
-    CUSTOMER'S NEW QUESTION:
-    ${userQuestion}
-  `;
+UTILIZA ÚNICAMENTE la información proporcionada en la Base de Conocimientos (Knowledge Base).
+
+Si la información no está ahí, responde exactamente: '[UNKNOWN]' y no intentes inventar respuestas.
+
+Formato: Usa listas para productos y precios. NO redactes párrafos largos ni desordenados.
+
+Tono: Cercano pero directo, enfocado en la venta de los productos Fuxion.
+
+Estructura: Siempre separa la respuesta en:
+
+Respuesta directa.
+
+Precio y breve beneficio.
+
+Llamado a la acción claro (ej: '¿Te gustaría pedirlo?')
+
+---
+Base de Conocimientos (Knowledge Base):
+${contextBlock}
+---
+CONVERSATION HISTORY:
+${formattedHistory}
+---
+CUSTOMER'S NEW QUESTION:
+${userQuestion}`;
 
   // Priorizar Groq (Gratis, rapidísimo, sin límites)
   if (hasGroqKey && groqClient) {
