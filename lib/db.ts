@@ -308,6 +308,50 @@ async function clearWhatsappSession(sessionId: string = 'default') {
   db.prepare('DELETE FROM whatsapp_sessions WHERE id = ?').run(sessionId);
 }
 
+// Helper to extract core words from a question to check for similarity
+function getCoreWords(text: string): string[] {
+  if (!text) return [];
+  const normalized = text
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove accents
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡]/g, "") // remove punctuation
+    .split(/\s+/);
+  
+  const stopWords = new Set([
+    'hola', 'quiero', 'como', 'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+    'de', 'del', 'que', 'en', 'y', 'a', 'me', 'te', 'le', 'nos', 'os', 'se',
+    'por', 'para', 'con', 'sin', 'sobre', 'mi', 'su', 'sus', 'tu', 'tus', 'al', 'lo',
+    'o', 'u', 'es', 'son', 'este', 'esta', 'estos', 'estas', 'ese', 'esa', 'esos', 'esas',
+    'aqui', 'alla', 'alli', 'buenos', 'dias', 'tardes', 'noches', 'favor', 'porfavor',
+    'mas', 'menos', 'cual', 'cuales', 'quien', 'quienes', 'donde', 'cuando', 'porque',
+    'saber', 'gustaria', 'info', 'informacion', 'precio', 'precios', 'costo', 'costos',
+    'venden', 'vende', 'tiene', 'tienen', 'hay', 'quisiera', 'necesito', 'comprar', 'adquirir'
+  ]);
+
+  return normalized.filter(w => w && !stopWords.has(w));
+}
+
+// Determines if two questions are similar enough to be considered duplicates
+function areQuestionsSimilar(q1: string, q2: string): boolean {
+  const core1 = getCoreWords(q1);
+  const core2 = getCoreWords(q2);
+
+  // If we have core words, check for overlap
+  if (core1.length > 0 && core2.length > 0) {
+    const set1 = new Set(core1);
+    const set2 = new Set(core2);
+    const intersection = new Set([...set1].filter(x => set2.has(x)));
+    if (intersection.size > 0) {
+      return true;
+    }
+  }
+
+  // Fallback to normalized exact match or inclusion
+  const norm1 = q1.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡\s]/g, "");
+  const norm2 = q2.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡\s]/g, "");
+  return norm1 === norm2 || norm1.includes(norm2) || norm2.includes(norm1);
+}
+
 // Unified database operations API
 export const db = {
   // --- LEADS ---
@@ -645,6 +689,19 @@ export const db = {
   },
 
   async addGap(id: string, leadId: string | null, question: string, context: string): Promise<any> {
+    // Evitar duplicados: obtener todas las dudas existentes
+    try {
+      const existingGaps = await this.getGaps();
+      const pendingGaps = existingGaps.filter((g: any) => g.status === 'pending');
+      const duplicate = pendingGaps.find((g: any) => areQuestionsSimilar(g.question, question));
+      if (duplicate) {
+        console.log(`[db.addGap] Ya existe una duda pendiente similar (ID: ${duplicate.id}). Omitiendo creación para: "${question}"`);
+        return duplicate;
+      }
+    } catch (err) {
+      console.error('Error al verificar duplicados de dudas en addGap:', err);
+    }
+
     if (useSupabase) {
       const { data, error } = await getSupabase().from('knowledge_gaps').insert({
         id,
@@ -717,6 +774,31 @@ export const db = {
 
       // Reactivate lead bot
       if (gap.lead_id) {
+        db.prepare('UPDATE leads SET bot_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(gap.lead_id);
+      }
+    }
+  },
+
+  async deleteGap(id: string): Promise<void> {
+    if (useSupabase) {
+      // 1. Obtener la duda para encontrar el lead_id y poder reactivar el bot
+      const { data: gap } = await getSupabase().from('knowledge_gaps').select('lead_id').eq('id', id).maybeSingle();
+      
+      // 2. Eliminar la duda
+      const { error } = await getSupabase().from('knowledge_gaps').delete().eq('id', id);
+      if (error) throw error;
+
+      // 3. Reactivar bot para el cliente asociado
+      if (gap && gap.lead_id) {
+        await getSupabase().from('leads').update({ bot_active: true }).eq('id', gap.lead_id);
+      }
+    } else {
+      const db = getSqliteDb();
+      const gap = db.prepare('SELECT lead_id FROM knowledge_gaps WHERE id = ?').get(id) as any;
+      
+      db.prepare('DELETE FROM knowledge_gaps WHERE id = ?').run(id);
+
+      if (gap && gap.lead_id) {
         db.prepare('UPDATE leads SET bot_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(gap.lead_id);
       }
     }

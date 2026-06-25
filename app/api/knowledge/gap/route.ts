@@ -28,3 +28,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Missing gap id' }, { status: 400 });
+    }
+
+    // Delete the gap (also reactivates the bot for the associated lead)
+    await db.deleteGap(id);
+
+    return NextResponse.json({ success: true, message: 'Knowledge gap deleted.' });
+  } catch (error: any) {
+    console.error('Gap Deletion Error:', error);
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+  }
+}

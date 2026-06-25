@@ -729,6 +729,29 @@ export default function CRMDashboard() {
     }
   };
 
+  // Eliminar/Descartar Duda Pendiente
+  const handleDeleteGap = async (gapId: string) => {
+    if (!confirm('¿Estás seguro de que deseas descartar esta duda? Se eliminará y se reactivará el bot para este cliente.')) return;
+    try {
+      const res = await fetch(`/api/knowledge/gap?id=${encodeURIComponent(gapId)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        if (selectedLead) {
+          const updatedLeads = await (await fetch(`/api/leads?_t=${Date.now()}`, { cache: 'no-store' })).json();
+          const freshLead = updatedLeads.find((l: any) => l.id === selectedLead.id);
+          if (freshLead) setSelectedLead(freshLead);
+        }
+      } else {
+        alert(data.error || 'Error al descartar la duda');
+      }
+    } catch (err) {
+      console.error('Error al descartar duda:', err);
+    }
+  };
+
   // Traducir estados para la visualización del usuario
   const translateStatus = (status: string) => {
     switch (status) {
@@ -1066,7 +1089,18 @@ export default function CRMDashboard() {
                         Para: {gap.leads?.name || 'Cliente Desconocido'} ({gap.leads?.phone || 'Sin número'})
                       </h4>
                     </div>
-                    <span className="text-[10px] text-slate-500">{new Date(gap.created_at).toLocaleString()}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] text-slate-500">{new Date(gap.created_at).toLocaleString()}</span>
+                      {gap.status === 'pending' && (
+                        <button
+                          onClick={() => handleDeleteGap(gap.id)}
+                          className="p-1 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                          title="Descartar Duda"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="p-3 bg-slate-950/80 rounded-lg border border-slate-850 font-medium text-slate-200">
