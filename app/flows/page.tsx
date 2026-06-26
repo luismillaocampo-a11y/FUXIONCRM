@@ -49,7 +49,7 @@ function MessageNode({ data }: any) {
       <div className="flex items-center justify-between border-b border-blue-500/20 pb-2 mb-2">
         <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">💬 Enviar Mensaje</span>
       </div>
-      <p className="text-xs text-slate-400 truncate-3-lines italic">
+      <p className="text-xs text-slate-400 whitespace-pre-wrap italic">
         {data.message || 'Sin mensaje configurado.'}
       </p>
       <Handle type="source" position={Position.Bottom} id="output" />
@@ -1102,7 +1102,7 @@ export default function FlowBuilder() {
                   <div className={`flex flex-col max-w-[85%] ${msg.sender === 'customer' ? 'ml-auto items-end' : 'mr-auto items-start'
                     }`}>
                     <span className="text-[9px] text-slate-500 capitalize mb-1 px-1">{msg.sender === 'customer' ? 'Cliente' : 'Asistente'}</span>
-                    <div className={`p-2.5 rounded-xl text-xs leading-relaxed ${msg.sender === 'customer'
+                    <div className={`p-2.5 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${msg.sender === 'customer'
                       ? 'bg-slate-800 text-slate-200 rounded-tr-none border border-slate-700/50'
                       : 'bg-emerald-600/15 text-emerald-100 rounded-tl-none border border-emerald-500/20'
                       }`}>
