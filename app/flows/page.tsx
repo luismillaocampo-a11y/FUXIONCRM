@@ -196,8 +196,8 @@ export default function FlowBuilder() {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [simLeadTags, setSimLeadTags] = useState<string[]>(['interested']);
 
-  // Carga inicial de los flujos
-  const loadFlowsList = async () => {
+  // Carga de los flujos
+  const loadFlowsList = async (setEditorState = false) => {
     try {
       const res = await fetch('/api/flows');
       const data = await res.json();
@@ -205,16 +205,21 @@ export default function FlowBuilder() {
 
       if (data.activeFlow) {
         setSystemActiveFlowId(data.activeFlow.id);
-        setActiveFlowId(data.activeFlow.id);
-        setFlowName(data.activeFlow.name);
-        setNodes(data.activeFlow.nodes || []);
-        setEdges(data.activeFlow.edges || []);
-      } else if (data.flows && data.flows.length > 0) {
-        const f = data.flows[0];
-        setActiveFlowId(f.id);
-        setFlowName(f.name);
-        setNodes(f.nodes || []);
-        setEdges(f.edges || []);
+        if (setEditorState) {
+          setActiveFlowId(data.activeFlow.id);
+          setFlowName(data.activeFlow.name);
+          setNodes(data.activeFlow.nodes || []);
+          setEdges(data.activeFlow.edges || []);
+        }
+      } else {
+        setSystemActiveFlowId('');
+        if (setEditorState && data.flows && data.flows.length > 0) {
+          const f = data.flows[0];
+          setActiveFlowId(f.id);
+          setFlowName(f.name);
+          setNodes(f.nodes || []);
+          setEdges(f.edges || []);
+        }
       }
     } catch (err) {
       console.error('Error al cargar flujos:', err);
@@ -222,7 +227,7 @@ export default function FlowBuilder() {
   };
 
   useEffect(() => {
-    loadFlowsList();
+    loadFlowsList(true);
   }, []);
 
   // Mantener actualizado el nodo seleccionado
@@ -341,7 +346,7 @@ export default function FlowBuilder() {
         } else if (makeActive === false) {
           setSystemActiveFlowId('');
         }
-        loadFlowsList();
+        loadFlowsList(false);
         setShowSaveSuccess(true);
         setTimeout(() => {
           setShowSaveSuccess(false);
@@ -737,7 +742,7 @@ export default function FlowBuilder() {
               Simular Flujo
             </button>
             <button
-              onClick={() => handleSaveFlow(false)}
+              onClick={() => handleSaveFlow()}
               disabled={saveLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-600 hover:bg-orange-500 text-white border border-slate-700 transition"
             >
