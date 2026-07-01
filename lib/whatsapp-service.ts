@@ -21,7 +21,7 @@ class WhatsAppService {
   private qrWaiters: QrWaiter[] = [];
   private isResetting = false;
   private wasConnected = false;
-  private flowState = new Map<string, string>(); // Guarda en qué nodo del flujo está cada cliente
+  public flowState = new Map<string, string>(); // Guarda en qué nodo del flujo está cada cliente
   private recentBotMessages = new Set<string>();
 
   public async initialize(force: boolean = false) {
@@ -344,7 +344,13 @@ class WhatsAppService {
   }
 
   // --- MOTOR DE FLUJOS BACKEND ---
-  private async executeActiveFlow(leadId: string, text: string, phone: string, flowContext: { overrideText: string | null; outOfMenuContext?: boolean }): Promise<string | null> {
+  public async executeActiveFlow(
+    leadId: string,
+    text: string,
+    phone: string,
+    flowContext: { overrideText: string | null; outOfMenuContext?: boolean },
+    sendMessageFn?: (phone: string, text: string) => Promise<any>
+  ): Promise<string | null> {
     const flow = await db.getActiveFlow();
     if (!flow || !flow.nodes || !flow.edges) return null;
 
@@ -359,7 +365,7 @@ class WhatsAppService {
           const edge = edges.find((e: any) => e.source === triggerNode.id);
           if (edge) {
             this.flowState.set(leadId, edge.target);
-            return await this.processFlowNode(leadId, edge.target, nodes, edges, phone);
+            return await this.processFlowNode(leadId, edge.target, nodes, edges, phone, sendMessageFn);
           }
         }
       }
@@ -380,7 +386,7 @@ class WhatsAppService {
           
           if (edge) {
             this.flowState.set(leadId, edge.target);
-            return await this.processFlowNode(leadId, edge.target, nodes, edges, phone);
+            return await this.processFlowNode(leadId, edge.target, nodes, edges, phone, sendMessageFn);
           } else {
             // NO HAY NODO SIGUIENTE: Pasar el texto del botón a Gemini para que responda con la Biblioteca
             this.flowState.delete(leadId);
@@ -402,7 +408,7 @@ class WhatsAppService {
         const edge = edges.find((e: any) => e.source === triggerNode.id);
         if (edge) {
           this.flowState.set(leadId, edge.target);
-          return await this.processFlowNode(leadId, edge.target, nodes, edges, phone);
+          return await this.processFlowNode(leadId, edge.target, nodes, edges, phone, sendMessageFn);
         }
       }
 
@@ -412,12 +418,21 @@ class WhatsAppService {
     }
   }
 
-  private async processFlowNode(leadId: string, nodeId: string, nodes: any[], edges: any[], phone: string): Promise<string | null> {
+  public async processFlowNode(
+    leadId: string,
+    nodeId: string,
+    nodes: any[],
+    edges: any[],
+    phone: string,
+    sendMessageFn?: (phone: string, text: string) => Promise<any>
+  ): Promise<string | null> {
     const node = nodes.find((n: any) => n.id === nodeId);
     if (!node) {
       this.flowState.delete(leadId); 
       return null;
     }
+
+    const sendMsg = sendMessageFn || ((p: string, t: string) => this.sendMessageToPhone(p, t));
 
     if (node.type === 'message') {
       let msgText = node.data.message;
@@ -436,14 +451,14 @@ class WhatsAppService {
         this.flowState.delete(leadId); 
       }
 
-      await this.sendMessageToPhone(phone, msgText);
+      await sendMsg(phone, msgText);
       return msgText;
     }
 
     if (node.type === 'buttons') {
       const btnText = (node.data.buttons || []).map((b: string, i: number) => `👉 *${i+1}.* ${b}`).join('\n');
       const fullMsg = `Selecciona una de las siguientes opciones:\n\n${btnText}`;
-      await this.sendMessageToPhone(phone, fullMsg);
+      await sendMsg(phone, fullMsg);
       return fullMsg;
     }
 

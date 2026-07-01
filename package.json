@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check-env": "node scripts/check-env.js"
+    "check-env": "node scripts/check-env.js",
+    "monitor-evolution": "node scripts/monitor-evolution-api.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

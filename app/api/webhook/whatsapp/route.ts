@@ -244,11 +244,12 @@ export async function POST(request: Request) {
 
     // Extract text directly. No cleaning, stripping, or sanitization is done to the message content,
     // ensuring complete support for special characters and complex utf8mb4 emojis (e.g. 🥺).
-    const messageText = extractMessageText(messageObj);
-    if (!messageText) {
+    const rawMessageText = extractMessageText(messageObj);
+    if (!rawMessageText) {
       console.log('[webhook/whatsapp] Ignored: No text extractable from message');
       return NextResponse.json({ success: true, message: 'Ignored: Empty message body' });
     }
+    let messageText: string = rawMessageText;
 
     const leadId = phone;
     const pushName = data?.pushName || body.pushName || `WhatsApp ${phone}`;
@@ -267,6 +268,32 @@ export async function POST(request: Request) {
       if (isBotDuplicate) {
         console.log(`[webhook/whatsapp] Outgoing message is a duplicate of a recent bot response. Skipping agent log.`);
         return NextResponse.json({ success: true, message: 'Ignored: Bot loopback message' });
+      }
+
+      // Check if this outgoing message is a duplicate of a recent agent message sent within the last 5 seconds
+      const nowMs = Date.now();
+      const isAgentDuplicate = recentMessages.some((m: any) => {
+        if (m.sender !== 'agent' || m.message !== messageText) {
+          return false;
+        }
+
+        let isoStr = m.created_at;
+        if (typeof isoStr === 'string') {
+          if (!isoStr.includes('T')) {
+            isoStr = isoStr.replace(' ', 'T');
+          }
+          if (!isoStr.endsWith('Z') && !isoStr.match(/[+-]\d{2}:?\d{2}$/)) {
+            isoStr += 'Z';
+          }
+        }
+        const msgTime = new Date(isoStr).getTime();
+        const diffSeconds = (nowMs - msgTime) / 1000;
+        return diffSeconds >= 0 && diffSeconds <= 5;
+      });
+
+      if (isAgentDuplicate) {
+        console.log(`[webhook/whatsapp] Outgoing message is a duplicate of a recent agent message sent within 5 seconds. Ignoring.`);
+        return NextResponse.json({ success: true, message: 'Ignored: Agent duplicate message within 5s' });
       }
 
       // Ensure lead exists
@@ -339,6 +366,49 @@ export async function POST(request: Request) {
     if (!isBotActive) {
       console.log(`[webhook/whatsapp] Bot is paused for lead ${leadId}. Message logged.`);
       return NextResponse.json({ success: true, message: 'Message logged. Bot is paused.' });
+    }
+
+    // 3.5. Flow Priority System Check
+    const flows = await db.getFlows();
+    const activeFlows = flows.filter((f: any) => f.is_active);
+
+    let isFlowTriggered = false;
+    for (const flow of activeFlows) {
+      const triggerNode = flow.nodes?.find((n: any) => n.type === 'trigger');
+      if (triggerNode) {
+        const keywords = (triggerNode.data?.keyword || '').split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
+        if (keywords.some((k: string) => messageText.toLowerCase().includes(k))) {
+          isFlowTriggered = true;
+          break;
+        }
+      }
+    }
+
+    const inFlowState = whatsappService.flowState?.has(leadId);
+
+    if (isFlowTriggered || inFlowState) {
+      console.log(`[webhook/whatsapp] Flow triggered or active flow state detected for lead ${leadId}. Executing flow...`);
+      const flowContext = { overrideText: null as string | null };
+      const flowReply = await whatsappService.executeActiveFlow(
+        leadId,
+        messageText,
+        activeLead.phone || phone,
+        flowContext,
+        async (p: string, t: string) => {
+          await sendWhatsAppMessage(p, t);
+        }
+      );
+
+      if (flowReply) {
+        // Save Bot Response to Logs
+        await db.addMessage(leadId, 'bot', flowReply);
+        console.log(`[webhook/whatsapp] Flow response sent: "${flowReply}"`);
+        return NextResponse.json({ success: true, reply: flowReply });
+      } else if (flowContext.overrideText) {
+        // If executeActiveFlow returned null but set overrideText (e.g. user selected a button option that goes to Gemini)
+        console.log(`[webhook/whatsapp] Flow set override text to: "${flowContext.overrideText}". Querying Gemini...`);
+        messageText = flowContext.overrideText;
+      }
     }
 
     // 4. Retrieve recent message history for AI context
