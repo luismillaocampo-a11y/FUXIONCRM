@@ -416,7 +416,8 @@ export async function POST(request: Request) {
     const isWaitingClose = activeLead.status === 'Pending Verification';
 
     let isFlowTriggered = false;
-    // Only trigger flow if user doesn't have an active IA conversation and is not waiting for a close response
+    
+    // Evaluar si una palabra clave del flujo fuerza el reinicio del flujo
     if (!hasIAControl && !isWaitingClose) {
       for (const flow of activeFlows) {
         const triggerNode = flow.nodes?.find((n: any) => n.type === 'trigger');
@@ -432,7 +433,9 @@ export async function POST(request: Request) {
 
     const inFlowState = whatsappService.flowState?.has(leadId);
 
-    if (isFlowTriggered || inFlowState) {
+    // CONTROL CRÍTICO: Si la IA ya tomó el control de la conversación, 
+    // se ignora el estado del flujo activo para evitar reinicios forzados del menú.
+    if (!hasIAControl && (isFlowTriggered || inFlowState)) {
       console.log(`[webhook/whatsapp] Flow triggered or active flow state detected for lead ${leadId}. Executing flow...`);
       const flowContext = { overrideText: null as string | null };
       const flowReply = await whatsappService.executeActiveFlow(
@@ -446,15 +449,15 @@ export async function POST(request: Request) {
       );
 
       if (flowReply) {
-        // Save Bot Response to Logs
         await db.addMessage(leadId, 'bot', flowReply);
         console.log(`[webhook/whatsapp] Flow response sent: "${flowReply}"`);
         return NextResponse.json({ success: true, reply: flowReply });
       } else if (flowContext.overrideText) {
-        // If executeActiveFlow returned null but set overrideText (e.g. user selected a button option that goes to Gemini)
         console.log(`[webhook/whatsapp] Flow set override text to: "${flowContext.overrideText}". Querying Gemini...`);
         messageText = flowContext.overrideText;
       }
+    } else if (hasIAControl) {
+      console.log(`[webhook/whatsapp] 🧠 IA activa detectada para el lead ${leadId}. Omitiendo flujos automáticos.`);
     }
 
     // 5. Query Gemini AI with RAG Context
