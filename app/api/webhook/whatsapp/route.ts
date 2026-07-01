@@ -469,7 +469,7 @@ export async function POST(request: Request) {
       console.log(`[webhook/whatsapp] AI could not answer. Pausing bot and creating knowledge gap task.`);
 
       // Pause bot
-      await db.updateLeadBotActive(leadId, false);
+      await db.updateLeadBotActive(activeLead.id, false);
 
       // Determine appropriate status update
       let newStatus = activeLead.status || 'New';
@@ -480,7 +480,7 @@ export async function POST(request: Request) {
         newStatus = 'Engaged';
       }
 
-      await db.updateLeadStatus(leadId, newStatus);
+      await db.updateLeadStatus(activeLead.id, newStatus);
 
       // Construct history snippet for knowledge gap context
       const contextSnippet = history
@@ -489,7 +489,7 @@ export async function POST(request: Request) {
         .join('\n');
 
       const gapId = `gap-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      await db.addGap(gapId, leadId, messageText, contextSnippet);
+      await db.addGap(gapId, activeLead.id, messageText, contextSnippet);
 
       // Send email alert for Knowledge Gap
       await alertKnowledgeGap({
@@ -523,7 +523,7 @@ export async function POST(request: Request) {
     const isPaymentTrigger = paymentKeywords.some(keyword => messageText.toLowerCase().includes(keyword));
 
     if (isPaymentTrigger && activeLead.status !== 'Pending Verification') {
-      await db.updateLeadStatus(leadId, 'Pending Verification');
+      await db.updateLeadStatus(activeLead.id, 'Pending Verification');
 
       let currentTags: string[] = [];
       try {
@@ -534,7 +534,7 @@ export async function POST(request: Request) {
 
       if (!currentTags.includes('needs-verification')) {
         currentTags.push('needs-verification');
-        await db.updateLeadTags(leadId, currentTags);
+        await db.updateLeadTags(activeLead.id, currentTags);
       }
 
       await alertPaymentVerification({

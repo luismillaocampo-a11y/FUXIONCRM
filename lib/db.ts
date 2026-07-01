@@ -401,14 +401,15 @@ export const db = {
   },
 
   async getLeadById(id: string): Promise<any> {
+    const realId = await this.normalizeLeadId(id);
     if (useSupabase) {
-      const res = await runSupabaseQuery((c) => c.from('leads').select('*').eq('id', id).single());
+      const res = await runSupabaseQuery((c) => c.from('leads').select('*').eq('id', realId).single());
       if (res && !res.error) return res.data;
       // fall through to sqlite fallback
     }
     {
       const db = getSqliteDb();
-      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as any;
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(realId) as any;
       if (!lead) return null;
       return {
         ...lead,
@@ -487,34 +488,43 @@ export const db = {
   },
 
   async updateLeadStatus(id: string, status: string): Promise<void> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     if (useSupabase) {
-      const { error } = await getSupabase().from('leads').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+      const query = getSupabase().from('leads').update({ status, updated_at: new Date().toISOString() });
+      const { error } = isUuid ? query.eq('id', id) : query.eq('phone', id);
       if (error) throw error;
     } else {
       const db = getSqliteDb();
-      db.prepare('UPDATE leads SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, id);
+      const dbId = isUuid ? id : await this.normalizeLeadId(id);
+      db.prepare('UPDATE leads SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, dbId);
     }
   },
 
   async updateLeadTags(id: string, tags: string[]): Promise<void> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     const tagsStr = JSON.stringify(tags);
     if (useSupabase) {
-      const { error } = await getSupabase().from('leads').update({ tags, updated_at: new Date().toISOString() }).eq('id', id);
+      const query = getSupabase().from('leads').update({ tags, updated_at: new Date().toISOString() });
+      const { error } = isUuid ? query.eq('id', id) : query.eq('phone', id);
       if (error) throw error;
     } else {
       const db = getSqliteDb();
-      db.prepare('UPDATE leads SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(tagsStr, id);
+      const dbId = isUuid ? id : await this.normalizeLeadId(id);
+      db.prepare('UPDATE leads SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(tagsStr, dbId);
     }
   },
 
   async updateLeadBotActive(id: string, botActive: boolean): Promise<void> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     const activeVal = botActive ? 1 : 0;
     if (useSupabase) {
-      const { error } = await getSupabase().from('leads').update({ bot_active: botActive, updated_at: new Date().toISOString() }).eq('id', id);
+      const query = getSupabase().from('leads').update({ bot_active: botActive, updated_at: new Date().toISOString() });
+      const { error } = isUuid ? query.eq('id', id) : query.eq('phone', id);
       if (error) throw error;
     } else {
       const db = getSqliteDb();
-      db.prepare('UPDATE leads SET bot_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(activeVal, id);
+      const dbId = isUuid ? id : await this.normalizeLeadId(id);
+      db.prepare('UPDATE leads SET bot_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(activeVal, dbId);
     }
   },
 
@@ -689,6 +699,8 @@ export const db = {
   },
 
   async addGap(id: string, leadId: string | null, question: string, context: string): Promise<any> {
+    const realLeadId = leadId ? await this.normalizeLeadId(leadId) : null;
+
     // Evitar duplicados: obtener todas las dudas existentes
     try {
       const existingGaps = await this.getGaps();
@@ -705,7 +717,7 @@ export const db = {
     if (useSupabase) {
       const { data, error } = await getSupabase().from('knowledge_gaps').insert({
         id,
-        lead_id: leadId,
+        lead_id: realLeadId,
         question,
         context,
         status: 'pending'
@@ -717,7 +729,7 @@ export const db = {
       db.prepare(`
         INSERT INTO knowledge_gaps (id, lead_id, question, context, status)
         VALUES (?, ?, ?, ?, 'pending')
-      `).run(id, leadId, question, context);
+      `).run(id, realLeadId, question, context);
       return db.prepare('SELECT * FROM knowledge_gaps WHERE id = ?').get(id);
     }
   },
@@ -820,12 +832,26 @@ export const db = {
 
   async normalizeLeadId(leadId: string): Promise<string> {
     if (!leadId || typeof leadId !== 'string') return leadId;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(leadId);
+    if (isUuid) return leadId;
+
     const clean = leadId.replace(/\D/g, '');
-    const mapped = await this.getLeadIdByWhatsappLid(clean);
-    if (mapped) {
-      console.log(`[db.normalizeLeadId] Resolviendo LID ID ${leadId} a ID real: ${mapped}`);
-      return mapped;
+    
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => 
+        c.from('leads')
+         .select('id')
+         .or(`phone.eq.${leadId},whatsapp_lid.eq.${leadId},phone.eq.${clean},whatsapp_lid.eq.${clean}`)
+         .maybeSingle()
+      );
+      if (res && !res.error && res.data) return res.data.id;
     }
+    
+    const db = getSqliteDb();
+    const row = db.prepare('SELECT id FROM leads WHERE id = ? OR phone = ? OR whatsapp_lid = ? OR phone = ? OR whatsapp_lid = ?')
+      .get(leadId, leadId, leadId, clean, clean) as any;
+    if (row) return row.id;
+
     return leadId;
   },
 
