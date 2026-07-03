@@ -22,7 +22,6 @@ if (process.env.GROQ_API_KEY) {
 
 /**
  * Summarizes/Extracts text from uploaded files (multimodal support)
- * In simulated mode, returns a realistic text extraction mock.
  */
 export async function analyzeMultimediaFile(
   fileName: string,
@@ -32,15 +31,14 @@ export async function analyzeMultimediaFile(
   if (hasApiKey && genAI) {
     try {
       const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-      
-      // Convert file buffer to Gemini Part
+
       const mimeTypes: { [key: string]: string } = {
         'pdf': 'application/pdf',
         'txt': 'text/plain',
-        'image': 'image/jpeg', // default image mime
+        'image': 'image/jpeg',
         'mp4': 'video/mp4'
       };
-      
+
       const mimeType = mimeTypes[fileType] || 'application/octet-stream';
       const filePart = {
         inlineData: {
@@ -63,7 +61,7 @@ export async function analyzeMultimediaFile(
 
       const result = await model.generateContent([prompt, filePart]);
       const text = result.response.text();
-      
+
       let content = text;
       let summary = `Indexed facts from ${fileName}`;
 
@@ -76,44 +74,40 @@ export async function analyzeMultimediaFile(
       return { content, summary };
     } catch (error) {
       console.error('Gemini extraction error, falling back to mock:', error);
-      // Fallback to mock on error
     }
   }
 
-  // MOCK SIMULATION MODE (if key is missing or failed)
-  await new Promise((resolve) => setTimeout(resolve, 1500)); // simulate latency
-  
+  // MOCK SIMULATION MODE
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
   let content = '';
   let summary = '';
 
-  if (fileType === 'pdf') {
-    content = `Manual Fuxion Flow: Pautas para productos de salud premium. Productos disponibles:
-- FuxionProtein: Proteína en polvo con 25g por cucharada. Precio: $39.99. Sabores: Chocolate, Vainilla.
-- FuxionCollagen: Colágeno para rejuvenecimiento. Precio: $29.99. Instrucciones: 1 cucharada diaria.
-- Política de devolución: 30 días de garantía si está sellado.
-- Contacto de soporte: soporte@fuxionflow.com, +1-800-FUXIONFLOW.`;
-    summary = 'Manual que detalla las especificaciones de precios de FuxionProtein ($39.99) y FuxionCollagen ($29.99), y garantía de 30 días.';
-  } else if (fileType === 'txt') {
+  if (fileType === 'txt') {
     content = fileBuffer.toString('utf-8');
-    summary = `Plain text content from ${fileName} with length ${content.length} characters.`;
+    summary = `Contenido de texto de ${fileName} — ${content.length} caracteres indexados.`;
+  } else if (fileType === 'pdf') {
+    content = `Manual Fuxion: Productos, precios y políticas. Archivo: ${fileName}`;
+    summary = `Documento PDF con información de productos Fuxion.`;
   } else if (fileType === 'image') {
-    content = `Image metadata for ${fileName}. The image displays a promotional flyer for "NutraSlim". It features a bright green bottle with a leaf icon, states "100% Organic Weight Loss", shows a price tag of $49.99, and has a discount badge of "Save 20% Today only".`;
-    summary = `Promotional image for NutraSlim weight loss supplement showing $49.99 price and 20% discount.`;
+    content = `Imagen promocional: ${fileName}.`;
+    summary = `Imagen de producto Fuxion.`;
   } else if (fileType === 'mp4') {
-    content = `Video transcription/description for ${fileName}. A customer service representative demonstrates how to consume NutraSlim. Step 1: Take two capsules. Step 2: Drink with 250ml of warm water. Step 3: Take 30 minutes before breakfast. It highlights that the supplement works best when paired with light exercise.`;
-    summary = `Instructional video explaining how to consume NutraSlim (2 capsules, 30 mins before breakfast with warm water).`;
+    content = `Video de demostración: ${fileName}.`;
+    summary = `Video instruccional de Fuxion.`;
   } else {
-    content = `Generic file content extract for ${fileName}.`;
-    summary = `File upload indexing for ${fileName}.`;
+    content = `Archivo: ${fileName}.`;
+    summary = `Archivo subido: ${fileName}.`;
   }
 
   return { content, summary };
 }
 
 /**
- * Executes a RAG pipeline query using Gemini or simulation.
- * Returns the text response. If the AI doesn't know, it returns "[UNKNOWN]".
- * If registration data is detected, returns "[REGISTRO_DETECTADO:...]" embedded in the reply.
+ * Executes a RAG pipeline query using Groq (primary) or Gemini (fallback).
+ * Falls back to smart Spanish KB search mock if both APIs fail.
+ * Returns "[UNKNOWN]" when no answer can be found.
+ * Returns "[REGISTRO_DETECTADO:...]" embedded when registration data is captured.
  */
 export async function queryKnowledgeBase(
   userQuestion: string,
@@ -126,7 +120,7 @@ export async function queryKnowledgeBase(
     .join('\n\n---\n\n');
 
   const formattedHistory = chatHistory
-    .slice(-8) // last 8 messages for sufficient context to detect registration
+    .slice(-8)
     .map((c) => `${c.sender.toUpperCase()}: ${c.message}`)
     .join('\n');
 
@@ -181,7 +175,7 @@ Cuando el cliente proporcione los 4 datos (nombre completo, DNI, celular, correo
 2. Agregar en el siguiente renglón (separado por salto de línea) la pregunta:
 "Mientras procesamos tu registro y te llamamos, ¿cómo te gustaría dejar programado el pago de tu pedido de hoy? ¿Por Yape o transferencia?"
 
-3. Al FINAL de toda la respuesta, en una línea nueva, insertar la etiqueta de sistema (no la muestres como parte del mensaje visible, pero inclúyela):
+3. Al FINAL de toda la respuesta, en una línea nueva, insertar la etiqueta de sistema:
 [REGISTRO_DETECTADO:{nombre}|{dni}|{celular}|{correo}]
 Sustituye {nombre}, {dni}, {celular}, {correo} con los datos reales que el cliente proporcionó.
 
@@ -202,7 +196,7 @@ ${formattedHistory}
 NUEVO MENSAJE DEL CLIENTE:
 ${userQuestion}`;
 
-  // Priorizar Groq (Gratis, rapidísimo, sin límites)
+  // Priority 1: Groq (fast, free)
   if (hasGroqKey && groqClient) {
     try {
       const chatCompletion = await groqClient.chat.completions.create({
@@ -211,71 +205,93 @@ ${userQuestion}`;
         temperature: 0.2,
         max_tokens: 500,
       });
-      return chatCompletion.choices[0]?.message?.content?.trim() || '[UNKNOWN]';
+      const result = chatCompletion.choices[0]?.message?.content?.trim() || '[UNKNOWN]';
+      console.log('[gemini] Groq response OK');
+      return result;
     } catch (error: any) {
       console.error('Groq query error:', error?.message);
     }
   }
 
-  // Respaldo a Gemini si Groq falla
+  // Priority 2: Gemini fallback
   if (hasApiKey && genAI) {
     try {
       const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
       const result = await model.generateContent(systemInstructions);
       const text = result.response.text().trim();
+      console.log('[gemini] Gemini response OK');
       return text;
     } catch (error) {
       console.error('Gemini query error, running simulator fallback:', error);
     }
   }
 
-  // MOCK SIMULATION MODE (if key is missing or failed)
-  await new Promise((resolve) => setTimeout(resolve, 800)); // simulate latency
-  
-  const questionLower = userQuestion.toLowerCase();
-  
-  // Custom keyword heuristic search in context
-  let bestMatch: string | null = null;
+  // ─── SMART MOCK (no API key / both APIs failed) ───────────────────────────
+  // Searches the actual KB content using Spanish keyword matching.
+  console.warn('[gemini] No API available — using smart KB mock');
+  await new Promise((resolve) => setTimeout(resolve, 600));
+
+  const normalize = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const qNorm = normalize(userQuestion).replace(/[¿?¡!.,;:]/g, '');
+
+  // Saludos
+  const greetingWords = ['hola', 'buenos dias', 'buenas tardes', 'buenas noches', 'hi', 'hello', 'saludos', 'buen dia'];
+  if (greetingWords.some(g => qNorm.includes(g))) {
+    return '¡Hola! Bienvenido a Fuxion Perú 😊 ¿En qué puedo ayudarte hoy? ¿Buscas algún producto en especial?';
+  }
+
+  // Stopwords to ignore when extracting query keywords
+  const stopwords = new Set([
+    'que', 'cual', 'como', 'para', 'con', 'sin', 'del', 'los', 'las', 'una',
+    'uno', 'por', 'hay', 'este', 'ese', 'eso', 'esa', 'mas', 'pero', 'pues',
+    'porque', 'tiene', 'tienes', 'quiero', 'queria', 'quisiera', 'dame', 'dime',
+    'saber', 'decir', 'informacion', 'sobre', 'acerca', 'favor', 'gracias',
+    'bueno', 'bien', 'ser', 'estar', 'tengo', 'puedo', 'puede', 'deseo',
+    'necesito', 'hola', 'oye', 'mira', 'hay', 'me', 'te', 'le', 'nos'
+  ]);
+
+  const queryWords = qNorm
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !stopwords.has(w));
+
+  if (queryWords.length === 0) {
+    return '¡Hola! ¿En qué producto Fuxion puedo ayudarte hoy? 😊';
+  }
+
+  // Search KB content: score each line by how many query words it contains
+  let bestScore = 0;
+  let bestLines: string[] = [];
 
   for (const item of kbItems) {
-    const lines = item.content.split('\n');
+    const lines = item.content
+      .split('\n')
+      .map((l: string) => l.trim())
+      .filter((l: string) => l.length > 8);
+
     for (const line of lines) {
-      if (line.toLowerCase().includes('price') || line.toLowerCase().includes('cost') || line.toLowerCase().includes('sell')) {
-        if (questionLower.includes('price') || questionLower.includes('cost') || questionLower.includes('how much') || questionLower.includes('slim') || questionLower.includes('catalog')) {
-          bestMatch = line;
-          break;
-        }
-      }
-      if (line.toLowerCase().includes('direction') || line.toLowerCase().includes('how to') || line.toLowerCase().includes('consume') || line.toLowerCase().includes('capsule')) {
-        if (questionLower.includes('how to take') || questionLower.includes('instructions') || questionLower.includes('consume') || questionLower.includes('direction') || questionLower.includes('capsule')) {
-          bestMatch = line;
-          break;
-        }
-      }
-      if (line.toLowerCase().includes('delivery') || line.toLowerCase().includes('ship') || line.toLowerCase().includes('lima') || line.toLowerCase().includes('peru')) {
-        if (questionLower.includes('delivery') || questionLower.includes('shipping') || questionLower.includes('ship') || questionLower.includes('time') || questionLower.includes('where')) {
-          bestMatch = line;
-          break;
-        }
-      }
-      if (line.toLowerCase().includes('payment') || line.toLowerCase().includes('yape') || line.toLowerCase().includes('plin') || line.toLowerCase().includes('cash')) {
-        if (questionLower.includes('pay') || questionLower.includes('yape') || questionLower.includes('plin') || questionLower.includes('transfer') || questionLower.includes('cash')) {
-          bestMatch = line;
-          break;
-        }
+      const lineNorm = normalize(line);
+      const score = queryWords.filter(w => lineNorm.includes(w)).length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestLines = [line];
+      } else if (score === bestScore && score > 0 && bestLines.length < 3) {
+        bestLines.push(line);
       }
     }
-    if (bestMatch) break;
   }
 
-  if (bestMatch) {
-    return `Según nuestro catálogo: ${bestMatch} ¿Te gustaría solicitarlo hoy mismo?`;
+  if (bestScore > 0) {
+    // Return a condensed answer from the best matching lines
+    const snippet = bestLines
+      .slice(0, 2)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .substring(0, 280);
+    return `${snippet}\n\n¿Te gustaría solicitarlo hoy mismo? 😊`;
   }
 
-  if (questionLower.includes('hello') || questionLower.includes('hi') || questionLower.includes('hola')) {
-    return '¡Hola! Bienvenido a Fuxion Perú. ¿En qué te puedo ayudar hoy? 😊';
-  }
-
-  // If we can't answer, return [UNKNOWN] to trigger Shadow Mode
+  // Nothing found — trigger shadow mode
   return '[UNKNOWN]';
 }
