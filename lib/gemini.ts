@@ -196,24 +196,7 @@ ${formattedHistory}
 NUEVO MENSAJE DEL CLIENTE:
 ${userQuestion}`;
 
-  // Priority 1: Groq (fast, free)
-  if (hasGroqKey && groqClient) {
-    try {
-      const chatCompletion = await groqClient.chat.completions.create({
-        messages: [{ role: 'user', content: systemInstructions }],
-        model: 'llama-3.1-8b-instant',
-        temperature: 0.2,
-        max_tokens: 500,
-      });
-      const result = chatCompletion.choices[0]?.message?.content?.trim() || '[UNKNOWN]';
-      console.log('[gemini] Groq response OK');
-      return result;
-    } catch (error: any) {
-      console.error('Groq query error:', error?.message);
-    }
-  }
-
-  // Priority 2: Gemini fallback
+  // ─── Priority 1: Gemini (primary engine) ────────────────────────────────────
   if (hasApiKey && genAI) {
     try {
       const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
@@ -221,8 +204,39 @@ ${userQuestion}`;
       const text = result.response.text().trim();
       console.log('[gemini] Gemini response OK');
       return text;
-    } catch (error) {
-      console.error('Gemini query error, running simulator fallback:', error);
+    } catch (error: any) {
+      const msg: string = error?.message || String(error);
+      const isQuotaError =
+        error?.status === 429 ||
+        msg.includes('429') ||
+        msg.toLowerCase().includes('quota') ||
+        msg.toLowerCase().includes('too many requests') ||
+        msg.toLowerCase().includes('rate limit') ||
+        msg.toLowerCase().includes('resource_exhausted');
+
+      if (isQuotaError) {
+        console.warn('[gemini] ⚠️ Gemini 429/quota exceeded — switching to Groq/Llama-3 automatically');
+      } else {
+        console.error('[gemini] Gemini error:', msg, '— trying Groq fallback');
+      }
+      // Fall through to Groq regardless of error type
+    }
+  }
+
+  // ─── Priority 2: Groq / Llama-3 (automatic failover) ───────────────────────
+  if (hasGroqKey && groqClient) {
+    try {
+      const chatCompletion = await groqClient.chat.completions.create({
+        messages: [{ role: 'user', content: systemInstructions }],
+        model: 'llama3-8b-8192',   // Llama 3 — fast, free, high quota
+        temperature: 0.2,
+        max_tokens: 500,
+      });
+      const result = chatCompletion.choices[0]?.message?.content?.trim() || '[UNKNOWN]';
+      console.log('[gemini] Groq/Llama-3 fallback response OK');
+      return result;
+    } catch (error: any) {
+      console.error('[gemini] Groq fallback also failed:', error?.message);
     }
   }
 
