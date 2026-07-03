@@ -133,3 +133,78 @@ Fuxion Flow Automation Bot
 
   return sendEmailNotification(subject, text);
 }
+
+/**
+ * Sends a WhatsApp message to the administrator via Evolution API.
+ * Falls back to console log if Evolution API is not configured.
+ */
+export async function sendWhatsAppToAdmin(message: string): Promise<void> {
+  const adminPhone = '51955252932'; // Luis Milla
+  const evolutionUrl = process.env.EVOLUTION_API_URL;
+  const evolutionKey = process.env.EVOLUTION_API_KEY;
+  const evolutionInstance = process.env.EVOLUTION_API_INSTANCE;
+
+  if (evolutionUrl && evolutionKey && evolutionInstance) {
+    try {
+      const endpoint = `${evolutionUrl.replace(/\/$/, '')}/message/sendText/${evolutionInstance}`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': evolutionKey
+        },
+        body: JSON.stringify({ number: adminPhone, text: message })
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        console.error(`[sendWhatsAppToAdmin] Evolution API error: ${res.status} - ${err}`);
+      } else {
+        console.log(`[sendWhatsAppToAdmin] ✅ WhatsApp alert sent to admin (${adminPhone})`);
+      }
+    } catch (err) {
+      console.error('[sendWhatsAppToAdmin] Failed to send WhatsApp alert to admin:', err);
+    }
+  } else {
+    // Fallback: log to console and simulation file
+    console.warn('[sendWhatsAppToAdmin] Evolution API not configured. Admin WhatsApp alert (SIMULATED):');
+    console.warn(message);
+    // Also write to email log as fallback
+    await sendEmailNotification(
+      '🚨 NUEVO CLIENTE POR REGISTRAR - Alerta WhatsApp (Simulada)',
+      message
+    );
+  }
+}
+
+/**
+ * Alert for new client registration — sends WhatsApp to admin with client data.
+ */
+export async function alertRegistration(data: {
+  nombre: string;
+  dni: string;
+  celular: string;
+  correo: string;
+  leadId: string;
+  crmBaseUrl?: string;
+}): Promise<void> {
+  const crmLink = data.crmBaseUrl
+    ? `${data.crmBaseUrl}/?lead=${encodeURIComponent(data.leadId)}`
+    : `https://tu-crm.vercel.app/?lead=${encodeURIComponent(data.leadId)}`;
+
+  const message =
+`🚨 ¡NUEVO CLIENTE POR REGISTRAR! 🚨
+El bot ha pausado la conversación porque el cliente aceptó el registro oficial. Ingresa a la web de Fuxion, inicia el registro manual y llámalo de inmediato.
+
+📋 Datos del Cliente:
+
+Nombre: ${data.nombre}
+DNI: ${data.dni}
+Celular: ${data.celular}
+Correo: ${data.correo}
+
+🔗 Link directo a la conversación en el CRM:
+${crmLink}`;
+
+  await sendWhatsAppToAdmin(message);
+}
+

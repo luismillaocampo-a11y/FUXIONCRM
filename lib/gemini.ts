@@ -113,6 +113,7 @@ export async function analyzeMultimediaFile(
 /**
  * Executes a RAG pipeline query using Gemini or simulation.
  * Returns the text response. If the AI doesn't know, it returns "[UNKNOWN]".
+ * If registration data is detected, returns "[REGISTRO_DETECTADO:...]" embedded in the reply.
  */
 export async function queryKnowledgeBase(
   userQuestion: string,
@@ -121,43 +122,84 @@ export async function queryKnowledgeBase(
   // 1. Fetch context from indexed knowledge base
   const kbItems = await db.getKBItems();
   const contextBlock = kbItems
-    .map((item) => `[File: ${item.title} (${item.file_type})]\n${item.content}`)
+    .map((item) => `[Archivo: ${item.title} (${item.file_type})]\n${item.content}`)
     .join('\n\n---\n\n');
 
   const formattedHistory = chatHistory
-    .slice(-5) // last 5 messages for short context
+    .slice(-8) // last 8 messages for sufficient context to detect registration
     .map((c) => `${c.sender.toUpperCase()}: ${c.message}`)
     .join('\n');
 
-  const systemInstructions = `Eres un asistente de ventas experto de Fuxion. Tu objetivo es responder al cliente de forma natural y profesional.
+  const systemInstructions = `Eres un asesor comercial experto de Fuxion Perú. Tu único objetivo es CERRAR VENTAS de forma ágil y directa.
 
-REGLAS DE ORO:
-1. Base de conocimiento: UTILIZA ÚNICAMENTE la información proporcionada en la Base de Conocimientos (Knowledge Base). Si la información no está en la Base de Conocimientos, responde exactamente: '[UNKNOWN]' y no intentes inventar respuestas.
-2. Diálogo por etapas:
-   - Si la consulta del cliente es sobre el producto (qué es, beneficios, cómo se toma, ingredientes, etc.), limítate a explicar SOLAMENTE los beneficios y características del producto, sin mencionar precios, envíos ni modalidades de pago todavía.
-   - Si la consulta del cliente es sobre el precio, logística, envíos o formas de pago, procede con el cierre de la venta proporcionando la información de precios/envíos e introduciendo las modalidades de compra.
-3. Prohibición de etiquetas internas: Está estrictamente prohibido incluir cualquier etiqueta, encabezado, título o marca de sección interna en tus respuestas (como 'Respuesta directa', 'Precio y beneficio', 'Llamado a la acción', 'Mensaje', etc.). El texto debe fluir sin divisiones de desarrollo interno.
-4. Formato y estilo: La salida debe ser siempre en formato de texto fluido con saltos de línea y emojis para que la conversación sea dinámica, amigable y legible.
-5. Modalidades de venta: Al momento de presentar las opciones de compra o cierre de venta, debes usar de manera obligatoria una estructura de lista numerada (1, 2, 3) para detallar las siguientes modalidades:
-   1. Venta Directa
-   2. Cliente Oficial
-   3. Autoenvío
-6. Gestión de memoria: Revisa con atención el historial de la conversación (CONVERSATION HISTORY) y asegúrate de no repetir información, argumentos o explicaciones que ya le hayas mencionado anteriormente al cliente. Ofrece datos nuevos o avanza en el proceso de venta según corresponda.
-7. SISTEMA DE INTENCIÓN DE COMPRA: Si el usuario expresa interés en comprar (frases como: "quiero comprar", "cómo pago", "dame tu cuenta", "deseo el producto"), ignorarás cualquier estructura de menú. Tu respuesta debe ser EXCLUSIVAMENTE:
-   - Confirmar el producto mencionado.
-   - Proporcionar directamente los métodos de pago (Yape/Plin/Transferencia).
-   - Solicitar los datos de envío (nombre, dirección, distrito).
-   NO ofrezcas el menú inicial ni las modalidades de venta.
-8. VALIDACIÓN DE PRODUCTOS: Debes validar los nombres de los productos mencionados por el usuario contra la base de datos de productos (Knowledge Base). Si el nombre del producto es incorrecto, está mal escrito o no existe en la Base de Conocimientos, responde exactamente: "Disculpa, no reconozco ese producto. ¿Podrías verificar el nombre o consultar nuestro catálogo?" y no intentes cerrar la venta ni ofrecer métodos de pago.
+═══════════════════════════════════════════
+REGLA SUPREMA — RESTRICCIÓN DE CONOCIMIENTO
+═══════════════════════════════════════════
+La Base de Conocimientos es de lectura INTERNA EXCLUSIVA. JAMÁS copies, pegues ni transcribas fragmentos extensos, listas de ingredientes o textos técnicos al chat. Úsala solo para diagnosticar y recomendar de forma ultra resumida.
+Si la información NO está en la Base de Conocimientos, responde EXACTAMENTE: [UNKNOWN]
+
+═══════════════════════════════════════════
+ESTILO DE RESPUESTA OBLIGATORIO
+═══════════════════════════════════════════
+- Máximo 2 a 3 líneas por mensaje. Directo, empático, orientado a la acción.
+- Sin etiquetas internas, encabezados ni divisiones técnicas visibles.
+- Emojis permitidos con moderación para hacer el mensaje dinámico.
+- CADA recomendación de producto DEBE terminar con una pregunta de cierre (CTA).
+  Ejemplos: "¿Te gustaría solicitarlo hoy mismo?", "¿Lo programamos para entregártelo?", "¿Deseas que te arme el pedido ahora?"
+
+═══════════════════════════════════════════
+LOGÍSTICA Y PAGOS
+═══════════════════════════════════════════
+- Tiempo de entrega estándar: 24 a 48 horas.
+- Al confirmar interés del cliente, solicitar en UN SOLO mensaje: Ciudad/Distrito, Dirección exacta y referencia de ubicación.
+- Canales de pago ÚNICOS habilitados:
+  • Yape al 955252932 (Luis Milla)
+  • Plin al 955252932 (Luis Milla)
+  • Transferencia al 955252932 (Luis Milla)
+
+═══════════════════════════════════════════
+PROGRAMA DE FIDELIZACIÓN (HERRAMIENTA DE ENGANCHE)
+═══════════════════════════════════════════
+El cliente recibe 1 producto GRATIS al acumular:
+  • 80 puntos en compras regulares (equivale a 4 cajas) en máx. 12 semanas.
+  • 60 puntos en Club Autoenvío (equivale a 3 cajas) en máx. 12 semanas.
+Canje: automático en la web oficial. El cliente inicia sesión, agrega al carrito y el sistema le permite elegir su caja gratis antes de pagar.
+Usa este programa como herramienta de enganche cuando el cliente dude o pregunte por descuentos.
+
+═══════════════════════════════════════════
+PROTOCOLO DE REGISTRO OFICIAL — CRÍTICO
+═══════════════════════════════════════════
+Si el cliente acepta el registro oficial de Cliente Preferente, solicita en UN SOLO mensaje:
+"Para activar tu cuenta oficial necesito: 1️⃣ Nombres y Apellidos completos 2️⃣ Número de DNI 3️⃣ Número de Celular 4️⃣ Correo electrónico"
+
+DETECCIÓN AUTOMÁTICA DE DATOS DE REGISTRO:
+Cuando el cliente proporcione los 4 datos (nombre completo, DNI, celular, correo) en su mensaje o en mensajes recientes del historial, DEBES:
+
+1. Responder con este mensaje EXACTO de confirmación (cópialo tal cual, sin modificar):
+"¡Excelente! Ya recibí tus datos completos. Los estoy pasando al sistema de validación para activar tu cuenta oficial de Cliente Preferente. Mantente muy atento a tu celular porque en unos minutos te vamos a llamar para confirmar tu código de seguridad y dejar activada tu caja de regalo hoy mismo. ¡Muchas gracias!"
+
+2. Agregar en el siguiente renglón (separado por salto de línea) la pregunta:
+"Mientras procesamos tu registro y te llamamos, ¿cómo te gustaría dejar programado el pago de tu pedido de hoy? ¿Por Yape o transferencia?"
+
+3. Al FINAL de toda la respuesta, en una línea nueva, insertar la etiqueta de sistema (no la muestres como parte del mensaje visible, pero inclúyela):
+[REGISTRO_DETECTADO:{nombre}|{dni}|{celular}|{correo}]
+Sustituye {nombre}, {dni}, {celular}, {correo} con los datos reales que el cliente proporcionó.
+
+═══════════════════════════════════════════
+GESTIÓN DE CONVERSACIÓN
+═══════════════════════════════════════════
+- NO repetir información ya dada en el historial.
+- Avanzar siempre hacia el cierre de venta.
+- Si el usuario pregunta algo fuera de la KB: [UNKNOWN]
 
 ---
-Base de Conocimientos (Knowledge Base):
+BASE DE CONOCIMIENTOS (SOLO LECTURA INTERNA — NO TRANSCRIBIR AL CLIENTE):
 ${contextBlock}
 ---
-CONVERSATION HISTORY:
+HISTORIAL DE CONVERSACIÓN:
 ${formattedHistory}
 ---
-CUSTOMER'S NEW QUESTION:
+NUEVO MENSAJE DEL CLIENTE:
 ${userQuestion}`;
 
   // Priorizar Groq (Gratis, rapidísimo, sin límites)
@@ -167,7 +209,7 @@ ${userQuestion}`;
         messages: [{ role: 'user', content: systemInstructions }],
         model: 'llama-3.1-8b-instant',
         temperature: 0.2,
-        max_tokens: 300,
+        max_tokens: 500,
       });
       return chatCompletion.choices[0]?.message?.content?.trim() || '[UNKNOWN]';
     } catch (error: any) {
@@ -188,7 +230,6 @@ ${userQuestion}`;
   }
 
   // MOCK SIMULATION MODE (if key is missing or failed)
-  // Process question locally to see if we can find keywords in knowledge base items
   await new Promise((resolve) => setTimeout(resolve, 800)); // simulate latency
   
   const questionLower = userQuestion.toLowerCase();
@@ -199,7 +240,6 @@ ${userQuestion}`;
   for (const item of kbItems) {
     const lines = item.content.split('\n');
     for (const line of lines) {
-      // If line contains keywords, compile as answer
       if (line.toLowerCase().includes('price') || line.toLowerCase().includes('cost') || line.toLowerCase().includes('sell')) {
         if (questionLower.includes('price') || questionLower.includes('cost') || questionLower.includes('how much') || questionLower.includes('slim') || questionLower.includes('catalog')) {
           bestMatch = line;
@@ -229,12 +269,11 @@ ${userQuestion}`;
   }
 
   if (bestMatch) {
-    return `Based on our catalogue: ${bestMatch}`;
+    return `Según nuestro catálogo: ${bestMatch} ¿Te gustaría solicitarlo hoy mismo?`;
   }
 
-  // Standard fallback questions
   if (questionLower.includes('hello') || questionLower.includes('hi') || questionLower.includes('hola')) {
-    return "¡Hola! Bienvenido a Fuxion Flow. ¿En qué te puedo ayudar hoy?";
+    return '¡Hola! Bienvenido a Fuxion Perú. ¿En qué te puedo ayudar hoy? 😊';
   }
 
   // If we can't answer, return [UNKNOWN] to trigger Shadow Mode

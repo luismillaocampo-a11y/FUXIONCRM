@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { queryKnowledgeBase } from '@/lib/gemini';
-import { alertKnowledgeGap, alertPaymentVerification } from '@/lib/notifications';
+import { alertKnowledgeGap, alertPaymentVerification, alertRegistration } from '@/lib/notifications';
 import { whatsappService } from '@/lib/whatsapp-service';
 import { db } from '@/lib/db';
 
@@ -401,6 +401,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Message logged. Bot is paused.' });
     }
 
+    // 3.1 Stop if AI is globally disabled by the operator
+    const aiGloballyEnabled = typeof globalThis.AI_GLOBALLY_ENABLED === 'undefined' ? true : globalThis.AI_GLOBALLY_ENABLED;
+    if (!aiGloballyEnabled) {
+      console.log(`[webhook/whatsapp] AI is globally disabled. Message logged for lead ${leadId}, no AI response sent.`);
+      return NextResponse.json({ success: true, message: 'Message logged. AI globally disabled.' });
+    }
+
     // 4. Retrieve recent message history for AI context
     const historyMessages = await db.getMessages(leadId);
     const history = historyMessages.slice(-10).map((m: any) => ({
@@ -510,6 +517,47 @@ export async function POST(request: Request) {
         bot_active: false,
         gapCreated: true
       });
+    }
+
+    // 7. Detect [REGISTRO_DETECTADO] tag from AI response
+    const registroMatch = reply.match(/\[REGISTRO_DETECTADO:([^|\]]+)\|([^|\]]+)\|([^|\]]+)\|([^\]]+)\]/);
+    if (registroMatch) {
+      const [, regNombre, regDni, regCelular, regCorreo] = registroMatch;
+      // Strip the internal tag from the visible message
+      const confirmMsg = reply.replace(/\[REGISTRO_DETECTADO:[^\]]+\]/, '').trim();
+      // The follow-up payment question is embedded or we add it separately
+      const paymentFollowUp = 'Mientras procesamos tu registro y te llamamos, ¿cómo te gustaría dejar programado el pago de tu pedido de hoy? ¿Por Yape o transferencia?';
+
+      // Save and send the confirmation message
+      await db.addMessage(leadId, 'bot', confirmMsg);
+      await sendWhatsAppMessage(activeLead.phone || phone, confirmMsg);
+
+      // Wait a moment then send the payment question as a second message
+      await new Promise(r => setTimeout(r, 1200));
+      await db.addMessage(leadId, 'bot', paymentFollowUp);
+      await sendWhatsAppMessage(activeLead.phone || phone, paymentFollowUp);
+
+      // Pause bot and update lead status to Por Registrar en Web
+      await db.updateLeadBotActive(activeLead.id, false);
+      await db.updateLeadStatus(activeLead.id, 'Por Registrar en Web');
+
+      // Determine CRM base URL for the link in admin alert
+      const crmBase = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000';
+
+      // Fire admin WhatsApp alert with client data
+      await alertRegistration({
+        nombre: regNombre.trim(),
+        dni: regDni.trim(),
+        celular: regCelular.trim(),
+        correo: regCorreo.trim(),
+        leadId: activeLead.id,
+        crmBaseUrl: crmBase
+      });
+
+      console.log(`[webhook/whatsapp] 🎯 Registro detectado para lead ${leadId}. Bot pausado. Alerta al admin disparada.`);
+      return NextResponse.json({ success: true, reply: confirmMsg, registroDetectado: true });
     }
 
     // 7. Save Bot Response to Logs

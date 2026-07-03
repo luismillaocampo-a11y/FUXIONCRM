@@ -759,6 +759,7 @@ export default function CRMDashboard() {
       case 'Engaged': return 'Interactuando';
       case 'Pending Verification': return 'Verificación Pendiente';
       case 'Converted': return 'Venta Confirmada';
+      case 'Por Registrar en Web': return 'Por Registrar en Web';
       default: return status;
     }
   };
@@ -777,6 +778,7 @@ export default function CRMDashboard() {
     else if (leadsFilter === 'Interactuando') dbStatus = 'Engaged';
     else if (leadsFilter === 'Verificación Pendiente') dbStatus = 'Pending Verification';
     else if (leadsFilter === 'Venta Confirmada') dbStatus = 'Converted';
+    // Por Registrar en Web: se guarda igual en BD
 
     return matchesSearch && lead.status === dbStatus;
   });
@@ -940,8 +942,8 @@ export default function CRMDashboard() {
                 />
               </div>
 
-              <div className="flex gap-2 self-start md:self-auto">
-                {['Todos', 'Nuevo', 'Interactuando', 'Verificación Pendiente', 'Venta Confirmada'].map((filter) => (
+              <div className="flex flex-wrap gap-2 self-start md:self-auto">
+                {['Todos', 'Nuevo', 'Interactuando', 'Verificación Pendiente', 'Venta Confirmada', 'Por Registrar en Web'].map((filter) => (
                   <button
                     key={filter}
                     onClick={() => setLeadsFilter(filter)}
@@ -994,9 +996,11 @@ export default function CRMDashboard() {
                             lead.status === 'New' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
                             lead.status === 'Engaged' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
                             lead.status === 'Pending Verification' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 glow-active' :
+                            lead.status === 'Por Registrar en Web' ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse' :
                             'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                           }`}>
                             {lead.status === 'Pending Verification' && <Clock className="h-3 w-3 animate-pulse" />}
+                            {lead.status === 'Por Registrar en Web' && <UserCheck className="h-3 w-3" />}
                             {translateStatus(lead.status)}
                           </span>
                         </td>
