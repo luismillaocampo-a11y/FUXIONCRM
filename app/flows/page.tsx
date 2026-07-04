@@ -12,7 +12,9 @@ import {
   Handle,
   Position,
   Panel,
-  MarkerType
+  MarkerType,
+  ReactFlowProvider,
+  useReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -298,7 +300,8 @@ function ControlledTextArea({
   );
 }
 
-export default function FlowBuilder() {
+function FlowBuilder() {
+  const { getViewport } = useReactFlow();
   // Lista de flujos
   const [flows, setFlows] = useState<any[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string>('');
@@ -444,10 +447,18 @@ export default function FlowBuilder() {
         break;
     }
 
+    const { x: viewX, y: viewY, zoom } = getViewport();
+    const width = typeof window !== 'undefined' ? window.innerWidth : 1024;
+    const height = typeof window !== 'undefined' ? window.innerHeight : 768;
+
+    // Desplazar al centro de la pantalla actual del usuario
+    const posX = (-viewX + (width / 2) - 120) / zoom;
+    const posY = (-viewY + (height / 2) - 60) / zoom;
+
     const newNode = {
       id,
       type,
-      position: { x: 100 + Math.random() * 200, y: 150 + Math.random() * 100 },
+      position: { x: posX, y: posY },
       data: { label, ...initialData }
     };
 
@@ -1591,5 +1602,13 @@ export default function FlowBuilder() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function FlowBuilderWrapper() {
+  return (
+    <ReactFlowProvider>
+      <FlowBuilder />
+    </ReactFlowProvider>
   );
 }
