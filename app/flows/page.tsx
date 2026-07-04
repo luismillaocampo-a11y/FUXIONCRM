@@ -261,6 +261,43 @@ const nodeTypes = {
   alertAgent: AlertAgentNode
 };
 
+// Componente auxiliar para evitar pérdida de cursor y scroll en áreas de texto controladas
+function ControlledTextArea({ 
+  value, 
+  onChange, 
+  placeholder, 
+  className, 
+  rows = 12 
+}: { 
+  value: string; 
+  onChange: (val: string) => void; 
+  placeholder?: string; 
+  className?: string; 
+  rows?: number; 
+}) {
+  const [localValue, setLocalValue] = useState(value);
+  
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setLocalValue(val);
+    onChange(val);
+  };
+
+  return (
+    <textarea
+      value={localValue}
+      onChange={handleChange}
+      placeholder={placeholder}
+      className={className}
+      rows={rows}
+    />
+  );
+}
+
 export default function FlowBuilder() {
   // Lista de flujos
   const [flows, setFlows] = useState<any[]>([]);
@@ -1119,23 +1156,12 @@ export default function FlowBuilder() {
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Texto del Mensaje</label>
-                  <textarea
-                    ref={messageTextareaRef}
-                    rows={6}
+                  <ControlledTextArea
+                    rows={12}
                     value={selectedNode.data.message || ''}
-                    onChange={(e) => {
-                      const cursorPos = e.target.selectionStart;
-                      updateNodeData({ message: e.target.value });
-                      // Restaurar posición del cursor después de que React actualice el estado
-                      requestAnimationFrame(() => {
-                        if (messageTextareaRef.current) {
-                          messageTextareaRef.current.selectionStart = cursorPos;
-                          messageTextareaRef.current.selectionEnd = cursorPos;
-                        }
-                      });
-                    }}
+                    onChange={(val) => updateNodeData({ message: val })}
                     placeholder="Escribe el mensaje de WhatsApp que recibirá el cliente..."
-                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-blue-500/50"
+                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-blue-500/50 font-sans leading-relaxed"
                   />
                 </div>
               </div>
@@ -1240,12 +1266,12 @@ export default function FlowBuilder() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mensaje de Seguimiento</label>
                   <p className="text-[9px] text-slate-500">Este mensaje se enviará automáticamente por WhatsApp una vez cumplido el tiempo.</p>
-                  <textarea
-                    rows={4}
+                  <ControlledTextArea
+                    rows={8}
                     value={selectedNode.data.message || ''}
-                    onChange={(e) => updateNodeData({ message: e.target.value })}
+                    onChange={(val) => updateNodeData({ message: val })}
                     placeholder="Mensaje de seguimiento..."
-                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-amber-500/50 font-sans leading-relaxed"
                   />
                 </div>
               </div>
@@ -1285,11 +1311,11 @@ export default function FlowBuilder() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mensaje Personalizado</label>
-                  <textarea
-                    rows={5}
+                  <ControlledTextArea
+                    rows={10}
                     value={selectedNode.data.message || ''}
-                    onChange={(e) => updateNodeData({ message: e.target.value })}
-                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-rose-500/50"
+                    onChange={(val) => updateNodeData({ message: val })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-rose-500/50 font-sans leading-relaxed"
                   />
                 </div>
               </div>
@@ -1320,12 +1346,12 @@ export default function FlowBuilder() {
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mensaje de la Alerta</label>
-                  <textarea
-                    rows={4}
+                  <ControlledTextArea
+                    rows={8}
                     value={selectedNode.data.message || ''}
-                    onChange={(e) => updateNodeData({ message: e.target.value })}
+                    onChange={(val) => updateNodeData({ message: val })}
                     placeholder="Ej. El cliente tiene dudas con el pago de su Thermo T3."
-                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-red-500/50"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-red-500/50 font-sans leading-relaxed"
                   />
                 </div>
               </div>
