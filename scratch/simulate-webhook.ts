@@ -21,20 +21,23 @@ if (fs.existsSync(envPath)) {
 // Fallback to anon key for local simulation
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
 
+// Simulate disabling AI globally
+(globalThis as any).AI_GLOBALLY_ENABLED = false;
+
 // Mock request
 async function simulate() {
   const payload = {
     event: 'messages.upsert',
     data: {
       key: {
-        remoteJid: '51955252932@s.whatsapp.net',
+        remoteJid: '51912345678@s.whatsapp.net',
         fromMe: false,
         id: 'mock-msg-' + Date.now()
       },
       message: {
-        conversation: 'Luis\nComas\n99999999'
+        conversation: 'hola'
       },
-      pushName: 'Luiz Milla'
+      pushName: 'Test Customer'
     }
   };
 
@@ -46,7 +49,7 @@ async function simulate() {
     body: JSON.stringify(payload)
   });
 
-  console.log('Simulating webhook POST for customer registration details...');
+  console.log('Simulating webhook POST for a new active bot lead with AI DISABLED...');
   try {
     const response = await POST(req);
     console.log('Response Status:', response.status);

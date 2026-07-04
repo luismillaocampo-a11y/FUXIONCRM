@@ -401,12 +401,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Message logged. Bot is paused.' });
     }
 
-    // 3.1 Stop if AI is globally disabled by the operator
-    const aiGloballyEnabled = typeof globalThis.AI_GLOBALLY_ENABLED === 'undefined' ? true : globalThis.AI_GLOBALLY_ENABLED;
-    if (!aiGloballyEnabled) {
-      console.log(`[webhook/whatsapp] AI is globally disabled. Message logged for lead ${leadId}, no AI response sent.`);
-      return NextResponse.json({ success: true, message: 'Message logged. AI globally disabled.' });
-    }
+
 
     // 4. Retrieve recent message history for AI context
     const historyMessages = await db.getMessages(leadId);
@@ -465,6 +460,13 @@ export async function POST(request: Request) {
       }
     } else if (hasIAControl) {
       console.log(`[webhook/whatsapp] 🧠 IA activa detectada para el lead ${leadId}. Omitiendo flujos automáticos.`);
+    }
+
+    // 3.1 Stop if AI is globally disabled by the operator
+    const aiGloballyEnabled = typeof globalThis.AI_GLOBALLY_ENABLED === 'undefined' ? true : globalThis.AI_GLOBALLY_ENABLED;
+    if (!aiGloballyEnabled) {
+      console.log(`[webhook/whatsapp] AI is globally disabled. Message logged for lead ${leadId}, no AI response sent.`);
+      return NextResponse.json({ success: true, message: 'Message logged. AI globally disabled.' });
     }
 
     // 5. Query Gemini AI with RAG Context

@@ -187,7 +187,7 @@ class WhatsAppService {
               const isBotActive = currentLead ? (currentLead.bot_active === 1 || currentLead.bot_active === true) : true;
               const aiGloballyEnabled = typeof globalThis.AI_GLOBALLY_ENABLED === 'undefined' ? true : globalThis.AI_GLOBALLY_ENABLED;
 
-              if (sender === 'customer' && isBotActive && aiGloballyEnabled) {
+              if (sender === 'customer' && isBotActive) {
                 try {
                   const flowContext: { overrideText: string | null; outOfMenuContext?: boolean } = { overrideText: null };
                   const flowReply = await this.executeActiveFlow(leadId, text, phone, flowContext);
@@ -195,8 +195,8 @@ class WhatsAppService {
                   if (flowReply) {
                     // El flujo envió bienvenida o botones. NO guardar en BD aquí, el eco de WhatsApp (append) lo hará para evitar duplicados.
                     console.log(`[WhatsAppService] 🔀 Flujo ejecutado para ${leadId}`);
-                  } else {
-                    // 2. SI NO HAY FLUJO, USAR IA (GEMINI RAG)
+                  } else if (aiGloballyEnabled) {
+                    // 2. SI NO HAY FLUJO Y LA IA ESTA HABILITADA, USAR IA (GEMINI RAG)
                     // Usar el texto real o el texto del botón seleccionado
                     const textForAI = flowContext.overrideText || text;
                     const recentMsgs = await db.getMessages(leadId);
@@ -226,6 +226,8 @@ class WhatsAppService {
                       await db.addMessage(leadId, 'bot', reply);
                       await this.sendMessageToPhone(phone, reply);
                     }
+                  } else {
+                    console.log(`[WhatsAppService] AI is globally disabled. Skipping AI response for ${leadId}.`);
                   }
                 } catch (aiError) {
                   console.error('[WhatsAppService] Error en flujo/IA:', aiError);
