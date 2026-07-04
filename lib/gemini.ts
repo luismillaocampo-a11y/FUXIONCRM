@@ -228,7 +228,7 @@ ${userQuestion}`;
     try {
       const chatCompletion = await groqClient.chat.completions.create({
         messages: [{ role: 'user', content: systemInstructions }],
-        model: 'llama3-8b-8192',   // Llama 3 — fast, free, high quota
+        model: 'llama-3.1-8b-instant',   // Llama 3.1 — fast, free, high quota
         temperature: 0.2,
         max_tokens: 500,
       });
@@ -286,7 +286,11 @@ ${userQuestion}`;
 
     for (const line of lines) {
       const lineNorm = normalize(line);
-      const score = queryWords.filter(w => lineNorm.includes(w)).length;
+      const score = queryWords.filter(w => {
+        const escapedWord = w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp('(?:^|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ])' + escapedWord + '(?:$|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ])', 'i');
+        return regex.test(lineNorm);
+      }).length;
       if (score > bestScore) {
         bestScore = score;
         bestLines = [line];

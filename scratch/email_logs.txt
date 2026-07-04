@@ -201,3 +201,34 @@ Fuxion Flow Automation Bot
 
 ========================================
 
+
+========================================
+TIMESTAMP: 2026-07-04T21:29:52.085Z
+TO: admin@fuxionflow.com
+FROM: alerts@fuxionflow.com (SIMULATED)
+SUBJECT: 🚨 KNOWLEDGE GAP DETECTED: Chat paused for Luiz Milla
+----------------------------------------
+BODY:
+
+Dear Admin,
+
+A customer asked a question that the AI bot could not answer based on the knowledge base.
+The bot has been PAUSED (Shadow Mode active) for this customer.
+
+Lead Details:
+- Name: Luiz Milla
+- Phone: 51955252932
+
+Unanswered Question:
+"Luis
+Comas
+99999999"
+
+Action Required:
+Go to the CRM Dashboard under "Knowledge Gaps", provide the answer, and reactivate the bot.
+
+Best regards,
+Fuxion Flow Automation Bot
+
+========================================
+

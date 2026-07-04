@@ -577,15 +577,15 @@ class WhatsAppService {
     if (!this.socket) {
       await this.initialize();
     }
-    if (!this.socket) {
-      throw new Error('WhatsApp socket not initialized');
+    if (!this.socket || this.status !== 'connected') {
+      throw new Error('WhatsApp socket is not connected or authenticated');
     }
     return this.socket.sendMessage(jid, { text: text.toString().trim() });
   }
 
   public async sendWhatsAppButtons(phone: string, bodyText: string, buttonTexts: string[]) {
     if (!this.socket) await this.initialize();
-    if (!this.socket) throw new Error('WhatsApp socket not initialized');
+    if (!this.socket || this.status !== 'connected') throw new Error('WhatsApp socket is not connected or authenticated');
     
     const jid = this.getWhatsappJid(phone);
     
