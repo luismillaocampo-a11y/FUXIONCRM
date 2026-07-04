@@ -151,9 +151,9 @@ class WhatsAppService {
 
               const msgId = incoming.key?.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
-              // Guardar/actualizar cliente si no existe o si el mensaje es del cliente para actualizar sus datos
+              // Guardar/actualizar cliente si no existe
               const leadExists = await db.getLeadById(leadId);
-              if (!leadExists || sender === 'customer') {
+              if (!leadExists) {
                 await db.upsertLead({ 
                   id: leadId, 
                   name: leadName, 
@@ -162,6 +162,17 @@ class WhatsAppService {
                   status: 'New', 
                   tags: [], 
                   bot_active: true 
+                });
+              } else if (lid && leadExists.whatsapp_lid !== lid) {
+                // Actualizar solo el LID si se detectó por primera vez o cambió, sin machacar status/tags/bot_active
+                await db.upsertLead({
+                  id: leadId,
+                  name: leadExists.name || leadName,
+                  phone,
+                  whatsapp_lid: lid,
+                  status: leadExists.status,
+                  tags: leadExists.tags,
+                  bot_active: leadExists.bot_active
                 });
               }
 
@@ -172,7 +183,11 @@ class WhatsAppService {
               // ==========================================
               // FLUJO AUTOMÁTICO vs IA (Gemini)
               // ==========================================
-              if (sender === 'customer' && leadExists?.bot_active) {
+              const currentLead = await db.getLeadById(leadId);
+              const isBotActive = currentLead ? (currentLead.bot_active === 1 || currentLead.bot_active === true) : true;
+              const aiGloballyEnabled = typeof globalThis.AI_GLOBALLY_ENABLED === 'undefined' ? true : globalThis.AI_GLOBALLY_ENABLED;
+
+              if (sender === 'customer' && isBotActive && aiGloballyEnabled) {
                 try {
                   const flowContext: { overrideText: string | null; outOfMenuContext?: boolean } = { overrideText: null };
                   const flowReply = await this.executeActiveFlow(leadId, text, phone, flowContext);
