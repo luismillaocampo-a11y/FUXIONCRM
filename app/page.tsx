@@ -6,7 +6,8 @@ import {
   Search, Plus, X, Send, User, Bot, MessageSquare, 
   Trash2, Upload, FileText, Image, Video, HelpCircle, 
   AlertCircle, CheckCircle2, UserCheck, ToggleLeft, ToggleRight,
-  RefreshCw, FileCode, Check, Clock, Smile
+  RefreshCw, FileCode, Check, Clock, Smile, List, LayoutGrid,
+  StickyNote, Bell, TrendingUp, DollarSign, Users, Award
 } from 'lucide-react';
 
 const IDENTITY_MAPPING: { [key: string]: string[] } = {
@@ -64,6 +65,16 @@ export default function CRMDashboard() {
   const selectedLeadRef = React.useRef<any>(null);
   const forceScrollToBottomRef = React.useRef(false);
   const statusTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Nuevas variables de estado para mejoras profesionales
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [chatTab, setChatTab] = useState<'chat' | 'notes' | 'reminders'>('chat');
+  const [notes, setNotes] = useState<any[]>([]);
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [reminders, setReminders] = useState<any[]>([]);
+  const [newReminderMessage, setNewReminderMessage] = useState('');
+  const [newReminderHours, setNewReminderHours] = useState(24);
+  const [leadStats, setLeadStats] = useState<any>({ total: 0, newToday: 0, inNegotiation: 0, converted: 0, conversionRate: 0 });
 
   const updateWhatsappStatusDebounced = (newStatus: string) => {
     if (newStatus === 'connected' || newStatus === 'open') {
@@ -172,7 +183,18 @@ export default function CRMDashboard() {
         setErrorMsg(leadsData.error);
         return;
       }
-      setLeads(Array.isArray(leadsData) ? leadsData : []);
+      const leadsList = Array.isArray(leadsData) ? leadsData : [];
+      setLeads(leadsList);
+
+      // Calcular estadísticas de ventas en el cliente
+      const total = leadsList.length;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const newToday = leadsList.filter((l: any) => l.created_at && new Date(l.created_at) >= today).length;
+      const inNegotiation = leadsList.filter((l: any) => l.status === 'Pending Verification').length;
+      const converted = leadsList.filter((l: any) => l.status === 'Converted').length;
+      const conversionRate = total > 0 ? Math.round((converted / total) * 100) : 0;
+      setLeadStats({ total, newToday, inNegotiation, converted, conversionRate });
 
       const gapsRes = await fetch('/api/knowledge/gap');
       const gapsData = await gapsRes.json();
@@ -211,6 +233,141 @@ export default function CRMDashboard() {
     } catch (err: any) {
       console.error('Error cargando datos:', err);
       setErrorMsg(err.message || 'Error al conectar con la base de datos.');
+    }
+  };
+
+  const fetchNotes = async (leadId: string) => {
+    try {
+      const res = await fetch(`/api/notes?leadId=${encodeURIComponent(leadId)}`);
+      const data = await res.json();
+      setNotes(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error fetching notes:', err);
+    }
+  };
+
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoteContent.trim() || !selectedLead) return;
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId: selectedLead.id, content: newNoteContent.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewNoteContent('');
+        fetchNotes(selectedLead.id);
+      }
+    } catch (err) {
+      console.error('Error adding note:', err);
+    }
+  };
+
+  const handleDeleteNote = async (id: string) => {
+    if (!confirm('¿Seguro de eliminar esta nota?')) return;
+    try {
+      const res = await fetch(`/api/notes?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success && selectedLead) {
+        fetchNotes(selectedLead.id);
+      }
+    } catch (err) {
+      console.error('Error deleting note:', err);
+    }
+  };
+
+  const fetchReminders = async (leadId: string) => {
+    try {
+      const res = await fetch(`/api/reminders?leadId=${encodeURIComponent(leadId)}`);
+      const data = await res.json();
+      setReminders(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error fetching reminders:', err);
+    }
+  };
+
+  const handleAddReminder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newReminderMessage.trim() || !selectedLead) return;
+    const scheduledAt = new Date(Date.now() + newReminderHours * 60 * 60 * 1000).toISOString();
+    try {
+      const res = await fetch('/api/reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId: selectedLead.id, message: newReminderMessage.trim(), scheduledAt })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewReminderMessage('');
+        fetchReminders(selectedLead.id);
+      }
+    } catch (err) {
+      console.error('Error adding reminder:', err);
+    }
+  };
+
+  const handleDeleteReminder = async (id: string) => {
+    if (!confirm('¿Seguro de eliminar este recordatorio?')) return;
+    try {
+      const res = await fetch(`/api/reminders?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success && selectedLead) {
+        fetchReminders(selectedLead.id);
+      }
+    } catch (err) {
+      console.error('Error deleting reminder:', err);
+    }
+  };
+
+  const calculateScore = (lead: any) => {
+    if (!lead) return 0;
+    let score = 0;
+    let tagsList: string[] = [];
+    try {
+      tagsList = typeof lead.tags === 'string' ? JSON.parse(lead.tags) : (lead.tags || []);
+    } catch (e) {
+      tagsList = lead.tags || [];
+    }
+
+    if (tagsList.includes('hot-lead')) score += 25;
+    if (tagsList.includes('interested') || tagsList.includes('interesado')) score += 10;
+    if (tagsList.includes('needs-verification') || tagsList.includes('ready-to-buy')) score += 15;
+
+    if (lead.status === 'Pending Verification') score += 20;
+    if (lead.status === 'Por Registrar en Web') score += 30;
+    if (lead.status === 'Converted') score += 50;
+
+    if (lead.unread_count > 0) score += 10;
+
+    return Math.min(score, 100);
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 60) return 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10';
+    if (score >= 30) return 'text-amber-400 border-amber-500/20 bg-amber-500/10';
+    return 'text-rose-400 border-rose-500/20 bg-rose-500/10';
+  };
+
+  const handleStatusChange = async (leadId: string, newStatus: string) => {
+    try {
+      const leadToUpdate = leads.find(l => l.id === leadId);
+      if (!leadToUpdate) return;
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...leadToUpdate,
+          status: newStatus
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+      }
+    } catch (err) {
+      console.error('Error updating lead status via drag-drop:', err);
     }
   };
 
@@ -400,12 +557,17 @@ export default function CRMDashboard() {
     if (!selectedLead) {
       setChatMessages([]);
       setNewMessageAlert(false);
+      setNotes([]);
+      setReminders([]);
       return;
     }
 
     const leadId = selectedLead.id;
     setNewMessageAlert(false);
+    setChatTab('chat');
     fetchMessages(leadId);
+    fetchNotes(leadId);
+    fetchReminders(leadId);
 
     // Iniciamos polling de respaldo por si falla la conexión en tiempo real
     const pollInterval = setInterval(async () => {
@@ -822,6 +984,24 @@ export default function CRMDashboard() {
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
           {activeTab === 'leads' && (
+            <div className="flex bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-1.5 rounded transition ${viewMode === 'list' ? 'bg-slate-800 text-white border border-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
+                title="Vista de Lista"
+              >
+                <List size={14} />
+              </button>
+              <button
+                onClick={() => setViewMode('kanban')}
+                className={`p-1.5 rounded transition ${viewMode === 'kanban' ? 'bg-slate-800 text-white border border-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
+                title="Tablero Kanban"
+              >
+                <LayoutGrid size={14} />
+              </button>
+            </div>
+          )}
+          {activeTab === 'leads' && (
             <button
               onClick={() => setShowNewLeadModal(true)}
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-[0_4px_12px_rgba(16,185,129,0.15)]"
@@ -851,6 +1031,62 @@ export default function CRMDashboard() {
 
       {/* Cuerpo de Pestañas */}
       <div className="flex-1 overflow-y-auto p-8 flex flex-col min-w-0">
+        
+        {/* KPI Dashboard Widget (MetricsBar) */}
+        {activeTab === 'leads' && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="bg-[#0c0f1d]/80 border border-slate-800 p-4 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
+                <Users size={20} />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Leads</span>
+                <p className="text-xl font-bold text-white mt-0.5">{leadStats.total}</p>
+              </div>
+            </div>
+
+            <div className="bg-[#0c0f1d]/80 border border-slate-800 p-4 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400">
+                <Award size={20} />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nuevos Hoy</span>
+                <p className="text-xl font-bold text-white mt-0.5">{leadStats.newToday}</p>
+              </div>
+            </div>
+
+            <div className="bg-[#0c0f1d]/80 border border-slate-800 p-4 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400">
+                <Clock size={20} />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">En Negociación</span>
+                <p className="text-xl font-bold text-white mt-0.5">{leadStats.inNegotiation}</p>
+              </div>
+            </div>
+
+            <div className="bg-[#0c0f1d]/80 border border-slate-800 p-4 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400">
+                <DollarSign size={20} />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Confirmados</span>
+                <p className="text-xl font-bold text-white mt-0.5">{leadStats.converted}</p>
+              </div>
+            </div>
+
+            <div className="bg-[#0c0f1d]/80 border border-slate-800 p-4 rounded-xl flex items-center gap-3 col-span-2 md:col-span-1">
+              <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-400">
+                <TrendingUp size={20} />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Conversión</span>
+                <p className="text-xl font-bold text-white mt-0.5">{leadStats.conversionRate}%</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mb-6 rounded-3xl border border-slate-800/80 bg-slate-950/80 p-5 shadow-xl shadow-black/10">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-start gap-4">
@@ -959,106 +1195,203 @@ export default function CRMDashboard() {
               </div>
             </div>
 
-            {/* Tabla de Clientes */}
-            <div className="flex-1 overflow-hidden rounded-xl border border-slate-800/80 bg-[#0c0f1d] flex flex-col">
-              <div className="overflow-x-auto flex-1">
-                <table className="w-full border-collapse text-left">
-                  <thead>
-                    <tr className="border-b border-slate-800 bg-slate-900/30 text-slate-400 text-xs font-semibold uppercase tracking-wider">
-                      <th className="px-6 py-4">Nombre del Cliente</th>
-                      <th className="px-6 py-4">Teléfono</th>
-                      <th className="px-6 py-4">Estado</th>
-                      <th className="px-6 py-4">Etiquetas</th>
-                      <th className="px-6 py-4">Respuestas Automáticas</th>
-                      <th className="px-6 py-4 text-right">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50 text-sm text-slate-300">
-                    {filteredLeads.map((lead) => (
-                      <tr 
-                        key={lead.id} 
-                        className={`hover:bg-slate-800/20 transition-all cursor-pointer ${
-                          selectedLead?.id === lead.id ? 'bg-emerald-500/5 border-l-2 border-emerald-500' : ''
-                        }`}
-                        onClick={() => handleSelectLead(lead)}
-                      >
-                        <td className="px-6 py-4 font-medium text-white flex items-center justify-between gap-2">
-                          <span>{lead.name}</span>
-                          {lead.unread_count > 0 && (
-                            <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-[10px] font-bold text-white bg-rose-500 rounded-full animate-bounce shrink-0 shadow-lg shadow-rose-500/25">
-                              {lead.unread_count}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 font-mono text-xs">{lead.phone}</td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            lead.status === 'New' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                            lead.status === 'Engaged' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
-                            lead.status === 'Pending Verification' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 glow-active' :
-                            lead.status === 'Por Registrar en Web' ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse' :
-                            'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          }`}>
-                            {lead.status === 'Pending Verification' && <Clock className="h-3 w-3 animate-pulse" />}
-                            {lead.status === 'Por Registrar en Web' && <UserCheck className="h-3 w-3" />}
-                            {translateStatus(lead.status)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-wrap gap-1">
-                            {lead.tags && lead.tags.map((tag: string) => (
-                              <span key={tag} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400 border border-slate-700/50">
-                                {tag}
-                              </span>
-                            ))}
-                            {(!lead.tags || lead.tags.length === 0) && (
-                              <span className="text-slate-600 text-xs italic">Sin etiquetas</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => handleToggleBot(lead)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                              lead.bot_active 
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+            {/* Vista de Lista / Tabla de Clientes */}
+            {viewMode === 'list' && (
+              <div className="flex-1 overflow-hidden rounded-xl border border-slate-800/80 bg-[#0c0f1d] flex flex-col">
+                <div className="overflow-x-auto flex-1">
+                  <table className="w-full border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-slate-800 bg-slate-900/30 text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                        <th className="px-6 py-4">Nombre del Cliente</th>
+                        <th className="px-6 py-4">Teléfono</th>
+                        <th className="px-6 py-4">Prioridad / Score</th>
+                        <th className="px-6 py-4">Estado</th>
+                        <th className="px-6 py-4">Etiquetas</th>
+                        <th className="px-6 py-4">Respuestas Automáticas</th>
+                        <th className="px-6 py-4 text-right">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50 text-sm text-slate-300">
+                      {filteredLeads.map((lead) => {
+                        const score = calculateScore(lead);
+                        return (
+                          <tr 
+                            key={lead.id} 
+                            className={`hover:bg-slate-800/20 transition-all cursor-pointer ${
+                              selectedLead?.id === lead.id ? 'bg-emerald-500/5 border-l-2 border-emerald-500' : ''
                             }`}
-                          >
-                            {lead.bot_active ? (
-                              <>
-                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                                Bot Activo (Auto)
-                              </>
-                            ) : (
-                              <>
-                                <AlertCircle className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
-                                Modo Manual
-                              </>
-                            )}
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                          <button
                             onClick={() => handleSelectLead(lead)}
-                            className="text-xs font-semibold text-slate-400 hover:text-emerald-400 transition"
                           >
-                            Ver Chat
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredLeads.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="text-center py-12 text-slate-500 italic">
-                          No se encontraron clientes con los filtros seleccionados.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                            <td className="px-6 py-4 font-medium text-white flex items-center justify-between gap-2">
+                              <span>{lead.name}</span>
+                              {lead.unread_count > 0 && (
+                                <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-[10px] font-bold text-white bg-rose-500 rounded-full animate-bounce shrink-0 shadow-lg shadow-rose-500/25">
+                                  {lead.unread_count}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 font-mono text-xs">{lead.phone}</td>
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-bold ${getScoreColor(score)}`}>
+                                Score: {score}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                lead.status === 'New' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                                lead.status === 'Engaged' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
+                                lead.status === 'Pending Verification' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 glow-active' :
+                                lead.status === 'Por Registrar en Web' ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse' :
+                                'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              }`}>
+                                {lead.status === 'Pending Verification' && <Clock className="h-3 w-3 animate-pulse" />}
+                                {lead.status === 'Por Registrar en Web' && <UserCheck className="h-3 w-3" />}
+                                {translateStatus(lead.status)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-wrap gap-1">
+                                {lead.tags && lead.tags.map((tag: string) => (
+                                  <span key={tag} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400 border border-slate-700/50">
+                                    {tag}
+                                  </span>
+                                ))}
+                                {(!lead.tags || lead.tags.length === 0) && (
+                                  <span className="text-slate-600 text-xs italic">Sin etiquetas</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => handleToggleBot(lead)}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                                  lead.bot_active 
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                }`}
+                              >
+                                {lead.bot_active ? (
+                                  <>
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                                    Bot Activo (Auto)
+                                  </>
+                                ) : (
+                                  <>
+                                    <AlertCircle className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
+                                    Modo Manual
+                                  </>
+                                )}
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => handleSelectLead(lead)}
+                                className="text-xs font-semibold text-slate-400 hover:text-emerald-400 transition"
+                              >
+                                Ver Chat
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {filteredLeads.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="text-center py-12 text-slate-500 italic">
+                            No se encontraron clientes con los filtros seleccionados.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Vista de Tablero Kanban / Pipeline de Ventas */}
+            {viewMode === 'kanban' && (
+              <div className="flex-1 flex gap-4 overflow-x-auto pb-4 select-none min-h-0">
+                {[
+                  { title: 'Nuevo Contacto', statusDb: 'New', color: 'border-blue-500/30 bg-blue-500/[0.01]' },
+                  { title: 'Calificado / Interactuando', statusDb: 'Engaged', color: 'border-purple-500/30 bg-purple-500/[0.01]' },
+                  { title: 'Negociación / Pago', statusDb: 'Pending Verification', color: 'border-amber-500/30 bg-amber-500/[0.01]' },
+                  { title: 'Por Registrar en Web', statusDb: 'Por Registrar en Web', color: 'border-orange-500/30 bg-orange-500/[0.01]' },
+                  { title: 'Venta Cerrada 🎉', statusDb: 'Converted', color: 'border-emerald-500/30 bg-emerald-500/[0.01]' }
+                ].map((column) => {
+                  const columnLeads = filteredLeads.filter(l => l.status === column.statusDb);
+                  return (
+                    <div 
+                      key={column.statusDb}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        const leadId = e.dataTransfer.getData('text/plain');
+                        handleStatusChange(leadId, column.statusDb);
+                      }}
+                      className={`w-72 shrink-0 flex flex-col rounded-xl border p-4 ${column.color}`}
+                    >
+                      {/* Cabecera de Columna */}
+                      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
+                        <span className="text-xs font-bold text-white uppercase tracking-wider">{column.title}</span>
+                        <span className="text-xs font-bold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">{columnLeads.length}</span>
+                      </div>
+
+                      {/* Lista de Tarjetas */}
+                      <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                        {columnLeads.map((lead) => {
+                          const score = calculateScore(lead);
+                          return (
+                            <div
+                              key={lead.id}
+                              draggable
+                              onDragStart={(e) => e.dataTransfer.setData('text/plain', lead.id)}
+                              onClick={() => handleSelectLead(lead)}
+                              className={`p-4 rounded-xl border border-slate-800 bg-[#0c0f1d] hover:border-slate-700 transition cursor-grab active:cursor-grabbing flex flex-col gap-3 relative ${
+                                selectedLead?.id === lead.id ? 'ring-2 ring-emerald-500/50' : ''
+                              }`}
+                            >
+                              <div className="flex justify-between items-start">
+                                <h4 className="font-semibold text-white text-xs truncate max-w-[80%]">{lead.name}</h4>
+                                {lead.unread_count > 0 && (
+                                  <span className="h-5 min-w-[20px] px-1 text-[10px] font-bold text-white bg-rose-500 rounded-full flex items-center justify-center shadow-lg shadow-rose-500/25 shrink-0">
+                                    {lead.unread_count}
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="text-[10px] text-slate-500 font-mono">+{lead.phone.replace(/\D/g, '')}</p>
+
+                              <div className="flex flex-wrap gap-1">
+                                {lead.tags && lead.tags.slice(0, 3).map((tag: string) => (
+                                  <span key={tag} className="px-1.5 py-0.5 rounded bg-slate-850 text-[9px] text-slate-400 border border-slate-800">
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+
+                              <div className="flex items-center justify-between border-t border-slate-800/60 pt-2 text-[10px]">
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded border font-bold ${getScoreColor(score)}`}>
+                                  Score: {score}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded font-medium ${
+                                  lead.bot_active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                                }`}>
+                                  {lead.bot_active ? '🤖 Bot' : '👤 Manual'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {columnLeads.length === 0 && (
+                          <div className="text-center py-12 text-xs text-slate-600 italic border border-dashed border-slate-850 rounded-xl">
+                            Sin leads en esta etapa
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1337,39 +1670,68 @@ export default function CRMDashboard() {
             </div>
           </div>
 
-          {/* Barra de Modo */}
-          <div className="px-4 py-2 border-b border-slate-800 bg-slate-950/20 flex items-center justify-between">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Responder del Bot:</span>
-            <button
-              onClick={() => handleToggleBot(selectedLead)}
-              className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase transition ${
-                selectedLead.bot_active
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-              }`}
-            >
-              {selectedLead.bot_active ? 'Automático' : 'Modo Manual'}
-            </button>
+          {/* Barra de Modo y Pestañas Laterales */}
+          <div className="px-4 py-2 border-b border-slate-800 bg-slate-950/20 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Responder del Bot:</span>
+              <button
+                onClick={() => handleToggleBot(selectedLead)}
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase transition ${
+                  selectedLead.bot_active
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                }`}
+              >
+                {selectedLead.bot_active ? 'Automático' : 'Modo Manual'}
+              </button>
+            </div>
+            
+            {/* Pestañas del chat lateral */}
+            <div className="flex bg-slate-900/60 p-0.5 rounded-lg border border-slate-800/80">
+              <button
+                onClick={() => setChatTab('chat')}
+                className={`flex-1 py-1 rounded text-[10px] font-bold uppercase transition ${
+                  chatTab === 'chat' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-350'
+                }`}
+              >
+                Chat
+              </button>
+              <button
+                onClick={() => setChatTab('notes')}
+                className={`flex-1 py-1 rounded text-[10px] font-bold uppercase transition flex items-center justify-center gap-1 ${
+                  chatTab === 'notes' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-350'
+                }`}
+              >
+                <StickyNote size={10} />
+                Notas ({notes.length})
+              </button>
+              <button
+                onClick={() => setChatTab('reminders')}
+                className={`flex-1 py-1 rounded text-[10px] font-bold uppercase transition flex items-center justify-center gap-1 ${
+                  chatTab === 'reminders' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-350'
+                }`}
+              >
+                <Bell size={10} />
+                Alertas ({reminders.filter(r => !r.sent).length})
+              </button>
+            </div>
           </div>
 
-          {/* Registro de Mensajes */}
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0a0c16]">
-            {chatNotice && (
-              <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-200">
-                {chatNotice}
-              </div>
-            )}
-            {chatMessages
-              .filter((msg) => {
-                if (!selectedLead) return false;
-                // Usar validación unificada por IDs asociados (LID + número real + asociados)
-                const isMatch = isIdInAssociatedIds(msg.lead_id);
-                console.log(`[UI filter] msg.id: ${msg.id}, msg.lead_id: ${msg.lead_id}, matches: ${isMatch}`);
-                return isMatch;
-              })
-              .map((msg) => {
-                console.log('[UI chatMessages.map] msg:', msg, 'selectedLead:', selectedLead);
-                return (
+          {/* Renderizado Condicional del Contenido Lateral según Pestaña */}
+          {chatTab === 'chat' && (
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0a0c16]">
+              {chatNotice && (
+                <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-200">
+                  {chatNotice}
+                </div>
+              )}
+              {chatMessages
+                .filter((msg) => {
+                  if (!selectedLead) return false;
+                  const isMatch = isIdInAssociatedIds(msg.lead_id);
+                  return isMatch;
+                })
+                .map((msg) => (
                   <div 
                     key={msg.id} 
                     className={`flex flex-col max-w-[80%] ${
@@ -1391,104 +1753,223 @@ export default function CRMDashboard() {
                       {msg.message}
                     </div>
                   </div>
-                );
-              })}
-            {chatMessages.length === 0 && (
-              <div className="text-center py-10 text-slate-600 text-xs italic">
-                No hay historial de chat.
-              </div>
-            )}
-            {chatLoading && (
-              <div className="flex items-center gap-1 text-[10px] text-slate-500 italic">
-                <RefreshCw className="h-3 w-3 animate-spin text-emerald-400" />
-                El Bot está redactando...
-              </div>
-            )}
-          </div>
+                ))}
+              {chatMessages.length === 0 && (
+                <div className="text-center py-10 text-slate-600 text-xs italic">
+                  No hay historial de chat.
+                </div>
+              )}
+              {chatLoading && (
+                <div className="flex items-center gap-1 text-[10px] text-slate-500 italic">
+                  <RefreshCw className="h-3 w-3 animate-spin text-emerald-400" />
+                  El Bot está redactando...
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Caja de Entrada de Texto */}
-          <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-800 bg-slate-950/40 flex flex-col gap-2">
-            
-            {/* Selector de Simulación */}
-            <div className="flex items-center justify-between border border-slate-800 bg-slate-950/80 px-3 py-1.5 rounded-lg">
-              <span className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Simular Cliente</span>
-              <button
-                type="button"
-                onClick={() => setIsSimulatingCustomer(!isSimulatingCustomer)}
-                className={`p-1 rounded transition-colors ${
-                  isSimulatingCustomer ? 'text-emerald-400' : 'text-slate-500'
-                }`}
-              >
-                {isSimulatingCustomer ? (
-                  <div className="flex items-center gap-1">
-                    <span className="text-[9px] font-bold uppercase tracking-widest bg-emerald-500/10 px-1 py-0.5 rounded">ON</span>
-                    <ToggleRight className="h-6 w-6" />
+          {chatTab === 'notes' && (
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-[#0a0c16]">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Notas Privadas (Historial del Agente)</span>
+              
+              <form onSubmit={handleAddNote} className="flex flex-col gap-2">
+                <textarea
+                  value={newNoteContent}
+                  onChange={(e) => setNewNoteContent(e.target.value)}
+                  placeholder="Escribe detalles internos... (ej. quiere entrega el viernes a las 3pm, Thermo T3)"
+                  rows={3}
+                  className="w-full p-2.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 resize-none"
+                />
+                <button
+                  type="submit"
+                  disabled={!newNoteContent.trim()}
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Guardar Nota Interna
+                </button>
+              </form>
+
+              <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
+                {notes.map((note) => (
+                  <div key={note.id} className="p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl relative group">
+                    <button
+                      onClick={() => handleDeleteNote(note.id)}
+                      className="absolute top-2 right-2 text-slate-650 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition"
+                      title="Eliminar Nota"
+                    >
+                      <X size={12} />
+                    </button>
+                    <p className="text-[9px] text-amber-500/80 font-mono">{new Date(note.created_at).toLocaleString('es-PE')}</p>
+                    <p className="text-xs text-slate-300 mt-1 whitespace-pre-wrap leading-relaxed">{note.content}</p>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="text-[9px] font-bold uppercase tracking-widest bg-slate-800 px-1 py-0.5 rounded">OFF</span>
-                    <ToggleLeft className="h-6 w-6" />
+                ))}
+
+                {notes.length === 0 && (
+                  <div className="text-center py-10 text-slate-600 text-xs italic">
+                    Sin notas de seguimiento.
                   </div>
                 )}
-              </button>
+              </div>
             </div>
+          )}
 
-            <div className="flex gap-2">
-              <div className="relative flex-1 flex">
+          {chatTab === 'reminders' && (
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-[#0a0c16]">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Seguimientos / Alertas WhatsApp</span>
+
+              <form onSubmit={handleAddReminder} className="flex flex-col gap-3 p-3 border border-slate-800 bg-slate-950/40 rounded-xl">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Programar Envío en:</label>
+                  <select
+                    value={newReminderHours}
+                    onChange={(e) => setNewReminderHours(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-900 border border-slate-800 rounded text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+                  >
+                    <option value={1}>1 hora</option>
+                    <option value={3}>3 horas</option>
+                    <option value={6}>6 horas</option>
+                    <option value={12}>12 horas</option>
+                    <option value={24}>24 horas (Recomendado)</option>
+                    <option value={48}>48 horas</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mensaje de WhatsApp a Enviar:</label>
+                  <textarea
+                    value={newReminderMessage}
+                    onChange={(e) => setNewReminderMessage(e.target.value)}
+                    placeholder="Ej. ¡Hola! Vi que te interesó el Thermo T3 de Fuxion Perú, ¿pudiste realizar el pago de tu pedido? 😊"
+                    rows={3}
+                    className="w-full p-2 bg-slate-900 border border-slate-800 rounded text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-amber-500/50 resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!newReminderMessage.trim()}
+                  className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                >
+                  Agendar Seguimiento
+                </button>
+              </form>
+
+              <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
+                {reminders.map((rem) => (
+                  <div key={rem.id} className="p-3 bg-slate-950 border border-slate-900 rounded-xl relative group">
+                    <button
+                      onClick={() => handleDeleteReminder(rem.id)}
+                      className="absolute top-2 right-2 text-slate-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition"
+                      title="Cancelar Alerta"
+                    >
+                      <X size={12} />
+                    </button>
+                    <div className="flex items-center justify-between">
+                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                        rem.sent ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400 animate-pulse'
+                      }`}>
+                        {rem.sent ? 'Enviado ✔' : 'Pendiente ⏳'}
+                      </span>
+                      <span className="text-[9px] text-slate-500 font-mono">{new Date(rem.scheduled_at).toLocaleString('es-PE')}</span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-2 leading-relaxed">{rem.message}</p>
+                  </div>
+                ))}
+
+                {reminders.length === 0 && (
+                  <div className="text-center py-10 text-slate-600 text-xs italic">
+                    Sin recordatorios agendados.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Caja de Entrada de Texto (Solo visible en pestaña chat) */}
+          {chatTab === 'chat' && (
+            <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-800 bg-slate-950/40 flex flex-col gap-2">
+              
+              {/* Selector de Simulación */}
+              <div className="flex items-center justify-between border border-slate-800 bg-slate-950/80 px-3 py-1.5 rounded-lg">
+                <span className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Simular Cliente</span>
                 <button
                   type="button"
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-emerald-400 transition-colors"
-                  title="Insertar emoji"
+                  onClick={() => setIsSimulatingCustomer(!isSimulatingCustomer)}
+                  className={`p-1 rounded transition-colors ${
+                    isSimulatingCustomer ? 'text-emerald-400' : 'text-slate-500'
+                  }`}
                 >
-                  <Smile className="h-4 w-4" />
+                  {isSimulatingCustomer ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-bold uppercase tracking-widest bg-emerald-500/10 px-1 py-0.5 rounded">ON</span>
+                      <ToggleRight className="h-6 w-6" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-bold uppercase tracking-widest bg-slate-800 px-1 py-0.5 rounded">OFF</span>
+                      <ToggleLeft className="h-6 w-6" />
+                    </div>
+                  )}
                 </button>
-                <input
-                  type="text"
-                  value={typedMessage}
-                  onChange={(e) => setTypedMessage(e.target.value)}
-                  placeholder={isSimulatingCustomer ? "Preguntar al bot como Cliente..." : "Responder manualmente como Agente..."}
-                  className="chat-message-text flex-1 pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
-                />
-
-                {/* Floating Emoji Picker */}
-                {showEmojiPicker && (
-                  <div className="absolute bottom-11 left-0 z-30 grid grid-cols-8 gap-1 p-2 bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl backdrop-blur-xl w-64 animate-fade-in">
-                    {['😀', '😂', '😍', '👍', '🙏', '🎉', '🔥', '❤️', '🤔', '😎', '💡', '🚀', '👇', '✅', '❌', '😊'].map(emoji => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => {
-                          setTypedMessage(prev => prev + emoji);
-                          setShowEmojiPicker(false);
-                        }}
-                        className="w-7 h-7 flex items-center justify-center text-sm rounded-lg hover:bg-slate-800 transition-colors"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
-              <button
-                type="submit"
-                disabled={!typedMessage.trim() || chatLoading}
-                className={`p-2 rounded-lg transition-all ${
-                  isSimulatingCustomer 
-                    ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.15)]' 
-                    : 'bg-cyan-500 text-white hover:bg-cyan-600'
-                }`}
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-[9px] text-slate-500 text-center italic">
-              {isSimulatingCustomer 
-                ? "💡 Simula el mensaje del cliente en WhatsApp para evaluar la respuesta de IA."
-                : "✏️ Permite responder manualmente en el chat. Al enviar, desactiva el Modo Manual del cliente."
-              }
-            </p>
-          </form>
+
+              <div className="flex gap-2">
+                <div className="relative flex-1 flex">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-emerald-400 transition-colors"
+                    title="Insertar emoji"
+                  >
+                    <Smile className="h-4 w-4" />
+                  </button>
+                  <input
+                    type="text"
+                    value={typedMessage}
+                    onChange={(e) => setTypedMessage(e.target.value)}
+                    placeholder={isSimulatingCustomer ? "Preguntar al bot como Cliente..." : "Responder manualmente como Agente..."}
+                    className="chat-message-text flex-1 pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
+                  />
+
+                  {/* Floating Emoji Picker */}
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-11 left-0 z-30 grid grid-cols-8 gap-1 p-2 bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl backdrop-blur-xl w-64 animate-fade-in">
+                      {['😀', '😂', '😍', '👍', '🙏', '🎉', '🔥', '❤️', '🤔', '😎', '💡', '🚀', '👇', '✅', '❌', '😊'].map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => {
+                            setTypedMessage(prev => prev + emoji);
+                            setShowEmojiPicker(false);
+                          }}
+                          className="w-7 h-7 flex items-center justify-center text-sm rounded-lg hover:bg-slate-800 transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={!typedMessage.trim() || chatLoading}
+                  className={`p-2 rounded-lg transition-all ${
+                    isSimulatingCustomer 
+                      ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.15)]' 
+                      : 'bg-cyan-500 text-white hover:bg-cyan-600'
+                  }`}
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-[9px] text-slate-500 text-center italic">
+                {isSimulatingCustomer 
+                  ? "💡 Simula el mensaje del cliente en WhatsApp para evaluar la respuesta de IA."
+                  : "✏️ Permite responder manualmente en el chat. Al enviar, desactiva el Modo Manual del cliente."
+                }
+              </p>
+            </form>
+          )}
         </div>
       )}
 

@@ -108,6 +108,24 @@ function getSqliteDb() {
       keys TEXT,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS lead_notes (
+      id TEXT PRIMARY KEY,
+      lead_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(lead_id) REFERENCES leads(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS reminders (
+      id TEXT PRIMARY KEY,
+      lead_id TEXT NOT NULL,
+      message TEXT NOT NULL,
+      scheduled_at TEXT NOT NULL,
+      sent INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(lead_id) REFERENCES leads(id) ON DELETE CASCADE
+    );
   `);
 
   try {
@@ -116,6 +134,26 @@ function getSqliteDb() {
 
   try {
     sqliteDb.exec('ALTER TABLE leads ADD COLUMN whatsapp_lid TEXT;');
+  } catch (e) {}
+
+  try {
+    sqliteDb.exec(`CREATE TABLE IF NOT EXISTS lead_notes (
+      id TEXT PRIMARY KEY,
+      lead_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );`);
+  } catch (e) {}
+
+  try {
+    sqliteDb.exec(`CREATE TABLE IF NOT EXISTS reminders (
+      id TEXT PRIMARY KEY,
+      lead_id TEXT NOT NULL,
+      message TEXT NOT NULL,
+      scheduled_at TEXT NOT NULL,
+      sent INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );`);
   } catch (e) {}
 
   // Insert default flows if empty
@@ -1070,5 +1108,110 @@ export const db = {
 
   clearWhatsappSession(sessionId: string = 'default'): Promise<void> {
     return clearWhatsappSession(sessionId);
+  },
+
+  // --- LEAD NOTES ---
+  async getNotesByLead(leadId: string): Promise<any[]> {
+    const normalizedId = await this.normalizeLeadId(leadId);
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) =>
+        c.from('lead_notes').select('*').eq('lead_id', normalizedId).order('created_at', { ascending: false })
+      );
+      if (res && !res.error) return res.data || [];
+    }
+    const db = getSqliteDb();
+    return db.prepare('SELECT * FROM lead_notes WHERE lead_id = ? ORDER BY created_at DESC').all(normalizedId);
+  },
+
+  async addNote(id: string, leadId: string, content: string): Promise<any> {
+    const normalizedId = await this.normalizeLeadId(leadId);
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) =>
+        c.from('lead_notes').insert({ id, lead_id: normalizedId, content }).select().single()
+      );
+      if (res && !res.error) return res.data;
+    }
+    const db = getSqliteDb();
+    db.prepare('INSERT INTO lead_notes (id, lead_id, content) VALUES (?, ?, ?)').run(id, normalizedId, content);
+    return db.prepare('SELECT * FROM lead_notes WHERE id = ?').get(id);
+  },
+
+  async deleteNote(id: string): Promise<void> {
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('lead_notes').delete().eq('id', id));
+    }
+    const db = getSqliteDb();
+    db.prepare('DELETE FROM lead_notes WHERE id = ?').run(id);
+  },
+
+  // --- REMINDERS ---
+  async getRemindersByLead(leadId: string): Promise<any[]> {
+    const normalizedId = await this.normalizeLeadId(leadId);
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) =>
+        c.from('reminders').select('*').eq('lead_id', normalizedId).order('scheduled_at', { ascending: true })
+      );
+      if (res && !res.error) return res.data || [];
+    }
+    const db = getSqliteDb();
+    return db.prepare('SELECT * FROM reminders WHERE lead_id = ? ORDER BY scheduled_at ASC').all(normalizedId);
+  },
+
+  async addReminder(id: string, leadId: string, message: string, scheduledAt: string): Promise<any> {
+    const normalizedId = await this.normalizeLeadId(leadId);
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) =>
+        c.from('reminders').insert({ id, lead_id: normalizedId, message, scheduled_at: scheduledAt, sent: false }).select().single()
+      );
+      if (res && !res.error) return res.data;
+    }
+    const db = getSqliteDb();
+    db.prepare('INSERT INTO reminders (id, lead_id, message, scheduled_at, sent) VALUES (?, ?, ?, ?, 0)').run(id, normalizedId, message, scheduledAt);
+    return db.prepare('SELECT * FROM reminders WHERE id = ?').get(id);
+  },
+
+  async getPendingReminders(): Promise<any[]> {
+    const now = new Date().toISOString();
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) =>
+        c.from('reminders').select('*, leads(id, name, phone)').eq('sent', false).lte('scheduled_at', now)
+      );
+      if (res && !res.error) return res.data || [];
+    }
+    const db = getSqliteDb();
+    const rows = db.prepare("SELECT r.*, l.id as lead_id_real, l.name as lead_name, l.phone as lead_phone FROM reminders r LEFT JOIN leads l ON r.lead_id = l.id WHERE r.sent = 0 AND r.scheduled_at <= ?").all(now);
+    return rows.map((r: any) => ({
+      ...r,
+      leads: { id: r.lead_id_real, name: r.lead_name, phone: r.lead_phone }
+    }));
+  },
+
+  async markReminderSent(id: string): Promise<void> {
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('reminders').update({ sent: true }).eq('id', id));
+    }
+    const db = getSqliteDb();
+    db.prepare('UPDATE reminders SET sent = 1 WHERE id = ?').run(id);
+  },
+
+  async deleteReminder(id: string): Promise<void> {
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('reminders').delete().eq('id', id));
+    }
+    const db = getSqliteDb();
+    db.prepare('DELETE FROM reminders WHERE id = ?').run(id);
+  },
+
+  async getLeadStats(): Promise<any> {
+    const leads = await this.getLeads();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIso = today.toISOString();
+    const total = leads.length;
+    const newToday = leads.filter((l: any) => l.created_at && l.created_at >= todayIso).length;
+    const inNegotiation = leads.filter((l: any) => l.status === 'Pending Verification').length;
+    const converted = leads.filter((l: any) => l.status === 'Converted').length;
+    const conversionRate = total > 0 ? Math.round((converted / total) * 100) : 0;
+    return { total, newToday, inNegotiation, converted, conversionRate };
   }
 };

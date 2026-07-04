@@ -428,7 +428,7 @@ class WhatsAppService {
   ): Promise<string | null> {
     const node = nodes.find((n: any) => n.id === nodeId);
     if (!node) {
-      this.flowState.delete(leadId); 
+      this.flowState.delete(leadId);
       return null;
     }
 
@@ -436,19 +436,29 @@ class WhatsAppService {
 
     if (node.type === 'message') {
       let msgText = node.data.message;
-      
-      const nextEdge = edges.find((e: any) => e.source === node.id);
-      if (nextEdge) {
-        const nextNode = nodes.find((n: any) => n.id === nextEdge.target);
+
+      // Multi-branching: get ALL outgoing edges from this node
+      const outEdges = edges.filter((e: any) => e.source === node.id);
+
+      if (outEdges.length > 0) {
+        const nextNode = nodes.find((n: any) => n.id === outEdges[0].target);
         if (nextNode?.type === 'buttons') {
           const btnText = (nextNode.data.buttons || []).map((b: string, i: number) => `👉 *${i+1}.* ${b}`).join('\n');
           msgText = `${msgText}\n\n${btnText}`;
-          this.flowState.set(leadId, nextNode.id); 
+          this.flowState.set(leadId, nextNode.id);
         } else {
-          this.flowState.set(leadId, nextEdge.target); 
+          this.flowState.set(leadId, outEdges[0].target);
+        }
+
+        // Fire any additional parallel branches (multi-branching)
+        if (outEdges.length > 1) {
+          for (let i = 1; i < outEdges.length; i++) {
+            this.processFlowNode(leadId, outEdges[i].target, nodes, edges, phone, sendMessageFn)
+              .catch((err: any) => console.error('[WhatsAppService] Multi-branch error:', err));
+          }
         }
       } else {
-        this.flowState.delete(leadId); 
+        this.flowState.delete(leadId);
       }
 
       await sendMsg(phone, msgText);
@@ -460,6 +470,86 @@ class WhatsAppService {
       const fullMsg = `Selecciona una de las siguientes opciones:\n\n${btnText}`;
       await sendMsg(phone, fullMsg);
       return fullMsg;
+    }
+
+    // --- NODO: ESPERAR / WAIT DELAY ---
+    if (node.type === 'waitDelay') {
+      const delayHours = Number(node.data.delayHours || 24);
+      const followUpMessage = node.data.message || `Hola, te escribimos para hacer un seguimiento de tu consulta sobre Fuxion Perú. ¿Pudiste revisar la información que te compartimos? ¿Te animaste con el Thermo T3 o el Prunex1? 😊`;
+      const scheduledAt = new Date(Date.now() + delayHours * 60 * 60 * 1000).toISOString();
+      const remId = `rem-flow-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      try {
+        await db.addReminder(remId, leadId, followUpMessage, scheduledAt);
+        console.log(`[WhatsAppService] waitDelay node: reminder scheduled in ${delayHours}h for lead ${leadId}`);
+      } catch (err) {
+        console.error('[WhatsAppService] Error creating waitDelay reminder:', err);
+      }
+      // Advance flow to next node if any
+      const nextEdge = edges.find((e: any) => e.source === node.id);
+      if (nextEdge) this.flowState.set(leadId, nextEdge.target);
+      else this.flowState.delete(leadId);
+      return null; // No immediate message
+    }
+
+    // --- NODO: CUPÓN / COUPON ---
+    if (node.type === 'coupon') {
+      const code = node.data.code || 'FUXION10';
+      const product = node.data.product || 'Thermo T3 o Prunex1';
+      const expiryHours = Number(node.data.expiryHours || 48);
+      const expiryDate = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
+      const expiryStr = expiryDate.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+      const couponMsg = node.data.message ||
+        `🎁 *¡Oferta exclusiva para ti!*\n\n` +
+        `Como parte de nuestra comunidad Fuxion Perú, tienes acceso a un descuento especial en *${product}*.\n\n` +
+        `🏷️ Usa el código: *${code}*\n` +
+        `⏰ Válido hasta: ${expiryStr}\n\n` +
+        `¡Escríbenos ahora para aprovechar esta oferta antes de que expire! 🔥`;
+      await sendMsg(phone, couponMsg);
+      const nextEdge = edges.find((e: any) => e.source === node.id);
+      if (nextEdge) this.flowState.set(leadId, nextEdge.target);
+      else this.flowState.delete(leadId);
+      return couponMsg;
+    }
+
+    // --- NODO: CAMBIAR ESTADO / UPDATE STATUS ---
+    if (node.type === 'updateStatus') {
+      const newStatus = node.data.status || 'Engaged';
+      try {
+        await db.updateLeadStatus(leadId, newStatus);
+        console.log(`[WhatsAppService] updateStatus node: lead ${leadId} → ${newStatus}`);
+      } catch (err) {
+        console.error('[WhatsAppService] Error in updateStatus node:', err);
+      }
+      const nextEdge = edges.find((e: any) => e.source === node.id);
+      if (nextEdge) {
+        this.flowState.set(leadId, nextEdge.target);
+        return await this.processFlowNode(leadId, nextEdge.target, nodes, edges, phone, sendMessageFn);
+      }
+      this.flowState.delete(leadId);
+      return null;
+    }
+
+    // --- NODO: ALERTAR AGENTE / ALERT AGENT ---
+    if (node.type === 'alertAgent') {
+      const alertMsg = node.data.message || `🔔 Alerta: Un cliente requiere atención manual en el flujo de ventas.`;
+      const adminPhone = process.env.ADMIN_WHATSAPP_PHONE;
+      if (adminPhone) {
+        try {
+          await sendMsg(adminPhone, `[Alerta de Flujo — Fuxion Perú]\nCliente: ${phone}\n\n${alertMsg}`);
+          console.log(`[WhatsAppService] alertAgent node: sent alert to admin ${adminPhone}`);
+        } catch (err) {
+          console.error('[WhatsAppService] Error sending alertAgent message:', err);
+        }
+      } else {
+        console.warn('[WhatsAppService] alertAgent node: ADMIN_WHATSAPP_PHONE not configured');
+      }
+      const nextEdge = edges.find((e: any) => e.source === node.id);
+      if (nextEdge) {
+        this.flowState.set(leadId, nextEdge.target);
+        return await this.processFlowNode(leadId, nextEdge.target, nodes, edges, phone, sendMessageFn);
+      }
+      this.flowState.delete(leadId);
+      return null;
     }
 
     this.flowState.delete(leadId);

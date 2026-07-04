@@ -164,13 +164,101 @@ function DeliveryEngineNode({ data }: any) {
   );
 }
 
+// 6. NODO ESPERAR (WAIT DELAY)
+function WaitDelayNode({ data }: any) {
+  return (
+    <div className="bg-[#2a1b11] border border-amber-600/40 rounded-xl p-4 w-60 shadow-lg text-slate-200">
+      <Handle type="target" position={Position.Top} id="input" />
+      <div className="flex items-center justify-between border-b border-amber-600/20 pb-2 mb-2">
+        <span className="text-xs font-bold text-amber-500 uppercase tracking-wider">⏳ Esperar</span>
+      </div>
+      <p className="text-xs font-semibold text-slate-300">Pausar flujo por:</p>
+      <p className="text-xs bg-slate-950/60 p-2 rounded-lg mt-1 text-amber-300 font-mono">
+        {data.delayHours || '24'} horas
+      </p>
+      <Handle type="source" position={Position.Bottom} id="output" />
+    </div>
+  );
+}
+
+// 7. NODO ENVIAR CUPÓN (COUPON)
+function CouponNode({ data }: any) {
+  return (
+    <div className="bg-[#241118] border border-rose-500/40 rounded-xl p-4 w-60 shadow-lg text-slate-200">
+      <Handle type="target" position={Position.Top} id="input" />
+      <div className="flex items-center justify-between border-b border-rose-500/20 pb-2 mb-2">
+        <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">🎁 Cupón Promocional</span>
+      </div>
+      <div className="space-y-1.5 text-xs">
+        <div className="flex justify-between bg-slate-950/60 p-1.5 rounded">
+          <span className="text-slate-400">Código:</span>
+          <span className="font-mono font-bold text-rose-300">{data.code || 'FUXION10'}</span>
+        </div>
+        <div className="flex justify-between bg-slate-950/60 p-1.5 rounded">
+          <span className="text-slate-400">Validez:</span>
+          <span className="text-rose-300">{data.expiryHours || '48'} horas</span>
+        </div>
+      </div>
+      <Handle type="source" position={Position.Bottom} id="output" />
+    </div>
+  );
+}
+
+// 8. NODO CAMBIAR ESTADO (UPDATE STATUS)
+function UpdateStatusNode({ data }: any) {
+  const translateStatus = (status: string) => {
+    switch (status) {
+      case 'New': return 'Nuevo';
+      case 'Engaged': return 'Interactuando';
+      case 'Pending Verification': return 'Verificación Pendiente';
+      case 'Converted': return 'Venta Confirmada';
+      case 'Por Registrar en Web': return 'Por Registrar en Web';
+      default: return status;
+    }
+  };
+
+  return (
+    <div className="bg-[#111c2a] border border-cyan-500/40 rounded-xl p-4 w-60 shadow-lg text-slate-200">
+      <Handle type="target" position={Position.Top} id="input" />
+      <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2 mb-2">
+        <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">📊 Cambiar Estado</span>
+      </div>
+      <p className="text-xs font-semibold text-slate-300">Nuevo estado en CRM:</p>
+      <p className="text-xs bg-slate-950/60 p-2 rounded-lg mt-1 text-cyan-300 font-bold">
+        {translateStatus(data.status || 'Engaged')}
+      </p>
+      <Handle type="source" position={Position.Bottom} id="output" />
+    </div>
+  );
+}
+
+// 9. NODO ALERTAR AGENTE (ALERT AGENT)
+function AlertAgentNode({ data }: any) {
+  return (
+    <div className="bg-[#241111] border border-red-500/40 rounded-xl p-4 w-60 shadow-lg text-slate-200">
+      <Handle type="target" position={Position.Top} id="input" />
+      <div className="flex items-center justify-between border-b border-red-500/20 pb-2 mb-2">
+        <span className="text-xs font-bold text-red-400 uppercase tracking-wider">🔔 Alerta al Agente</span>
+      </div>
+      <p className="text-xs text-slate-400 truncate italic">
+        {data.message || 'Enviar alerta de atención manual'}
+      </p>
+      <Handle type="source" position={Position.Bottom} id="output" />
+    </div>
+  );
+}
+
 // Mapeo de tipos de nodo
 const nodeTypes = {
   trigger: TriggerNode,
   message: MessageNode,
   buttons: ButtonsNode,
   logicJump: LogicJumpNode,
-  deliveryEngine: DeliveryEngineNode
+  deliveryEngine: DeliveryEngineNode,
+  waitDelay: WaitDelayNode,
+  coupon: CouponNode,
+  updateStatus: UpdateStatusNode,
+  alertAgent: AlertAgentNode
 };
 
 export default function FlowBuilder() {
@@ -275,7 +363,7 @@ export default function FlowBuilder() {
   };
 
   // Crear nodo en el canvas
-  const addNodeToCanvas = (type: 'trigger' | 'message' | 'buttons' | 'logicJump' | 'deliveryEngine') => {
+  const addNodeToCanvas = (type: 'trigger' | 'message' | 'buttons' | 'logicJump' | 'deliveryEngine' | 'waitDelay' | 'coupon' | 'updateStatus' | 'alertAgent') => {
     const id = `node-${Date.now()}`;
     let label = '';
     let initialData: any = {};
@@ -283,15 +371,15 @@ export default function FlowBuilder() {
     switch (type) {
       case 'trigger':
         label = 'Disparador Iniciar';
-        initialData = { keyword: 'hola, empezar, inicio' };
+        initialData = { keyword: 'hola, empezar, inicio, menu' };
         break;
       case 'message':
         label = 'Mensaje';
-        initialData = { message: 'Gracias por escribirnos. ¿En qué podemos ayudarte?' };
+        initialData = { message: '¡Hola! Bienvenido a Fuxion Perú. ¿Te gustaría conocer sobre nuestro té termogénico Thermo T3 o nuestra bebida digestiva Prunex1?' };
         break;
       case 'buttons':
         label = 'Botones Interactivos';
-        initialData = { buttons: ['Ver Productos', 'Consultar Envíos', 'Hablar con Asesor'] };
+        initialData = { buttons: ['Información de Productos', 'Tiempos de Envío', 'Hablar con Asesor'] };
         break;
       case 'logicJump':
         label = 'Condición de Etiquetas';
@@ -300,6 +388,22 @@ export default function FlowBuilder() {
       case 'deliveryEngine':
         label = 'Programador de Entrega';
         initialData = { format: 'standard' };
+        break;
+      case 'waitDelay':
+        label = 'Esperar';
+        initialData = { delayHours: 24, message: 'Hola, te escribimos para hacer un seguimiento de tu consulta sobre Fuxion Perú. ¿Te quedó alguna duda sobre el Thermo T3 o el Prunex1? 😊' };
+        break;
+      case 'coupon':
+        label = 'Cupón Promocional';
+        initialData = { code: 'FUXION10', product: 'Thermo T3 o Prunex1', expiryHours: 48, message: '🎁 *¡Oferta exclusiva para ti!*\n\nComo parte de nuestra comunidad Fuxion Perú, tienes acceso a un descuento especial en *Thermo T3 o Prunex1*.\n\n🏷️ Usa el código: *FUXION10*\n⏰ Válido por las próximas 48 horas.\n\n¡Escríbenos ahora para aprovechar esta oferta! 🔥' };
+        break;
+      case 'updateStatus':
+        label = 'Cambiar Estado';
+        initialData = { status: 'Engaged' };
+        break;
+      case 'alertAgent':
+        label = 'Alerta al Agente';
+        initialData = { message: '⚠️ Un cliente en WhatsApp requiere atención manual sobre Thermo T3 / Prunex1.' };
         break;
     }
 
@@ -598,6 +702,30 @@ export default function FlowBuilder() {
         icon = '🚚';
         title = 'Envío';
         break;
+      case 'waitDelay':
+        bg = '#2a1b11';
+        stroke = 'rgba(217, 119, 6, 0.4)';
+        icon = '⏳';
+        title = 'Esperar';
+        break;
+      case 'coupon':
+        bg = '#241118';
+        stroke = 'rgba(244, 63, 94, 0.4)';
+        icon = '🎁';
+        title = 'Cupón';
+        break;
+      case 'updateStatus':
+        bg = '#111c2a';
+        stroke = 'rgba(6, 182, 212, 0.4)';
+        icon = '📊';
+        title = 'Estado';
+        break;
+      case 'alertAgent':
+        bg = '#241111';
+        stroke = 'rgba(239, 68, 68, 0.4)';
+        icon = '🔔';
+        title = 'Alerta';
+        break;
     }
 
     const strokeColor = selected ? stroke.replace('0.4', '1') : stroke;
@@ -697,6 +825,42 @@ export default function FlowBuilder() {
             <rect x={x + 8} y={y + 42} width={width - 16} height={9} rx={2} fill="rgba(234, 179, 8, 0.05)" />
             <rect x={x + 12} y={y + 45} width={10} height={3} rx={0.5} fill="rgba(234, 179, 8, 0.3)" />
             <rect x={x + 26} y={y + 45} width={width - 38} height={3} rx={0.5} fill="rgba(234, 179, 8, 0.15)" />
+          </g>
+        )}
+
+        {node.type === 'waitDelay' && (
+          <g>
+            <rect x={x + 8} y={y + 30} width={width - 16} height={14} rx={3} fill="rgba(217, 119, 6, 0.05)" stroke="rgba(217, 119, 6, 0.2)" strokeWidth={0.5} />
+            <text x={x + 12} y={y + 40} fill="rgba(217, 119, 6, 0.8)" fontSize={7} fontFamily="monospace" fontWeight="bold">
+              {node.data.delayHours || '24'} horas
+            </text>
+          </g>
+        )}
+
+        {node.type === 'coupon' && (
+          <g>
+            <rect x={x + 8} y={y + 30} width={width - 16} height={14} rx={3} fill="rgba(244, 63, 94, 0.05)" stroke="rgba(244, 63, 94, 0.2)" strokeWidth={0.5} />
+            <text x={x + 12} y={y + 40} fill="rgba(244, 63, 94, 0.8)" fontSize={7} fontFamily="monospace" fontWeight="bold">
+              {node.data.code || 'FUXION10'}
+            </text>
+          </g>
+        )}
+
+        {node.type === 'updateStatus' && (
+          <g>
+            <rect x={x + 8} y={y + 30} width={width - 16} height={14} rx={3} fill="rgba(6, 182, 212, 0.05)" stroke="rgba(6, 182, 212, 0.2)" strokeWidth={0.5} />
+            <text x={x + 12} y={y + 40} fill="rgba(6, 182, 212, 0.8)" fontSize={7} fontFamily="sans-serif" fontWeight="bold">
+              {node.data.status || 'Engaged'}
+            </text>
+          </g>
+        )}
+
+        {node.type === 'alertAgent' && (
+          <g>
+            <rect x={x + 8} y={y + 30} width={width - 16} height={14} rx={3} fill="rgba(239, 68, 68, 0.05)" stroke="rgba(239, 68, 68, 0.2)" strokeWidth={0.5} />
+            <text x={x + 12} y={y + 40} fill="rgba(239, 68, 68, 0.8)" fontSize={6} fontFamily="sans-serif" fontWeight="bold">
+              {node.data.message ? (node.data.message.substring(0, 18) + '...') : 'Alerta'}
+            </text>
           </g>
         )}
       </g>
@@ -849,6 +1013,38 @@ export default function FlowBuilder() {
               >
                 <span className="text-base">🚚</span>
                 Programar Envío
+              </button>
+
+              <button
+                onClick={() => addNodeToCanvas('waitDelay')}
+                className="flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-amber-500 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/20 rounded-lg transition"
+              >
+                <span className="text-base">⏳</span>
+                Esperar (Delay)
+              </button>
+
+              <button
+                onClick={() => addNodeToCanvas('coupon')}
+                className="flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-rose-400 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/20 rounded-lg transition"
+              >
+                <span className="text-base">🎁</span>
+                Cupón Promocional
+              </button>
+
+              <button
+                onClick={() => addNodeToCanvas('updateStatus')}
+                className="flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-cyan-400 bg-cyan-500/5 hover:bg-cyan-500/10 border border-cyan-500/20 rounded-lg transition"
+              >
+                <span className="text-base">📊</span>
+                Cambiar Estado
+              </button>
+
+              <button
+                onClick={() => addNodeToCanvas('alertAgent')}
+                className="flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-lg transition"
+              >
+                <span className="text-base">🔔</span>
+                Alerta al Agente
               </button>
             </Panel>
 
@@ -1025,6 +1221,112 @@ export default function FlowBuilder() {
                       <li>Entrega 48h: <code className="text-[10px] text-slate-200">Fecha Actual + 2 días</code></li>
                     </ul>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* CONFIGURACIÓN ESPERAR (WAIT DELAY) */}
+            {selectedNode.type === 'waitDelay' && (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Horas de Espera</label>
+                  <input
+                    type="number"
+                    value={selectedNode.data.delayHours || 24}
+                    onChange={(e) => updateNodeData({ delayHours: Number(e.target.value) })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mensaje de Seguimiento</label>
+                  <p className="text-[9px] text-slate-500">Este mensaje se enviará automáticamente por WhatsApp una vez cumplido el tiempo.</p>
+                  <textarea
+                    rows={4}
+                    value={selectedNode.data.message || ''}
+                    onChange={(e) => updateNodeData({ message: e.target.value })}
+                    placeholder="Mensaje de seguimiento..."
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* CONFIGURACIÓN ENVIAR CUPÓN (COUPON) */}
+            {selectedNode.type === 'coupon' && (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Código del Cupón</label>
+                  <input
+                    type="text"
+                    value={selectedNode.data.code || ''}
+                    onChange={(e) => updateNodeData({ code: e.target.value })}
+                    placeholder="Ej. FUXION10"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-rose-500/50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Producto Destacado</label>
+                  <input
+                    type="text"
+                    value={selectedNode.data.product || ''}
+                    onChange={(e) => updateNodeData({ product: e.target.value })}
+                    placeholder="Ej. Thermo T3 o Prunex1"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-rose-500/50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Horas de Validez</label>
+                  <input
+                    type="number"
+                    value={selectedNode.data.expiryHours || 48}
+                    onChange={(e) => updateNodeData({ expiryHours: Number(e.target.value) })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-rose-500/50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mensaje Personalizado</label>
+                  <textarea
+                    rows={5}
+                    value={selectedNode.data.message || ''}
+                    onChange={(e) => updateNodeData({ message: e.target.value })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-rose-500/50"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* CONFIGURACIÓN CAMBIAR ESTADO */}
+            {selectedNode.type === 'updateStatus' && (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Seleccionar Nuevo Estado</label>
+                  <select
+                    value={selectedNode.data.status || 'Engaged'}
+                    onChange={(e) => updateNodeData({ status: e.target.value })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-cyan-500/50"
+                  >
+                    <option value="New">Nuevo</option>
+                    <option value="Engaged">Interactuando</option>
+                    <option value="Pending Verification">Verificación Pendiente</option>
+                    <option value="Por Registrar en Web">Por Registrar en Web</option>
+                    <option value="Converted">Venta Confirmada</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* CONFIGURACIÓN ALERTA AL AGENTE */}
+            {selectedNode.type === 'alertAgent' && (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mensaje de la Alerta</label>
+                  <textarea
+                    rows={4}
+                    value={selectedNode.data.message || ''}
+                    onChange={(e) => updateNodeData({ message: e.target.value })}
+                    placeholder="Ej. El cliente tiene dudas con el pago de su Thermo T3."
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-red-500/50"
+                  />
                 </div>
               </div>
             )}
