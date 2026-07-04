@@ -17,11 +17,7 @@ if (fs.existsSync(envPath)) {
   });
 }
 
-// Now verify we have the key
-console.log('Env GEMINI_API_KEY length:', process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.length : 0);
-
 async function test() {
-  // Dynamically import libraries so they read the updated process.env
   const { queryKnowledgeBase } = await import('../lib/gemini');
   const { db } = await import('../lib/db');
 
@@ -32,15 +28,30 @@ async function test() {
     message: m.message
   }));
 
-  console.log('History in test-gemini:', history);
+  console.log('Testing Smart Mock paths...\n');
   
-  console.log('\n--- Querying with "hola" ---');
-  try {
-    const reply = await queryKnowledgeBase('hola', history);
-    console.log('Reply:', reply);
-  } catch (err) {
-    console.error('Error in test:', err);
-  }
+  // Test case 1: Greeting
+  console.log('--- Test Case 1: Greeting ("hola") ---');
+  const greetingReply = await queryKnowledgeBase('hola', history);
+  console.log('Reply:', greetingReply);
+  console.log();
+
+  // Test case 2: Product query ("prunex")
+  console.log('--- Test Case 2: Product query ("prunex") ---');
+  const productReply = await queryKnowledgeBase('prunex', history);
+  console.log('Reply:', productReply);
+  console.log();
+
+  // Test case 3: Short positive answer ("Si")
+  // We need to inject a history ending with a bot question to test this
+  console.log('--- Test Case 3: Short positive response ("Si") with buying question in history ---');
+  const historyWithQuestion = [
+    { sender: 'customer', message: 'Prunex' },
+    { sender: 'bot', message: 'Excelente, Deseas Programar la Compra?\n\n¿Te gustaría solicitarlo hoy mismo? 😊' }
+  ];
+  const confirmationReply = await queryKnowledgeBase('Si', historyWithQuestion);
+  console.log('Reply:', confirmationReply);
+  console.log();
 }
 
 test();

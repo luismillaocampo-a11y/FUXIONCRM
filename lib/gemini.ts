@@ -109,15 +109,93 @@ export async function analyzeMultimediaFile(
  * Returns "[UNKNOWN]" when no answer can be found.
  * Returns "[REGISTRO_DETECTADO:...]" embedded when registration data is captured.
  */
+function retrieveRelevantContext(userQuestion: string, kbItems: any[]): string {
+  const normalize = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const qNorm = normalize(userQuestion).replace(/[¿?¡!.,;:]/g, '');
+  
+  const stopwords = new Set([
+    'que', 'cual', 'como', 'para', 'con', 'sin', 'del', 'los', 'las', 'una',
+    'uno', 'por', 'hay', 'este', 'ese', 'eso', 'esa', 'mas', 'pero', 'pues',
+    'porque', 'tiene', 'tienes', 'quiero', 'queria', 'quisiera', 'dame', 'dime',
+    'saber', 'decir', 'informacion', 'sobre', 'acerca', 'favor', 'gracias',
+    'bueno', 'bien', 'ser', 'estar', 'tengo', 'puedo', 'puede', 'deseo',
+    'necesito', 'hola', 'oye', 'mira', 'me', 'te', 'le', 'nos', 'y', 'o', 'un'
+  ]);
+
+  const queryWords = qNorm
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !stopwords.has(w));
+
+  if (queryWords.length === 0) {
+    return kbItems
+      .map(item => `[Archivo: ${item.title}]\n${item.summary || (item.content ? item.content.slice(0, 400) : '')}`)
+      .join('\n\n---\n\n');
+  }
+
+  const fragments: { source: string; content: string; score: number }[] = [];
+
+  for (const item of kbItems) {
+    const rawContent = item.content || '';
+    const paragraphs = rawContent
+      .split(/\n\s*\n/)
+      .map((p: string) => p.trim())
+      .filter((p: string) => p.length > 10);
+
+    for (const paragraph of paragraphs) {
+      const paraNorm = normalize(paragraph);
+      let score = 0;
+      
+      for (const w of queryWords) {
+        const escapedWord = w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp('(?:^|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ])' + escapedWord + '(?:$|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ])', 'i');
+        if (regex.test(paraNorm)) {
+          score += 1;
+        }
+      }
+      
+      if (score > 0) {
+        fragments.push({
+          source: item.title,
+          content: paragraph,
+          score
+        });
+      }
+    }
+  }
+
+  if (fragments.length === 0) {
+    return kbItems
+      .map(item => `[Archivo: ${item.title}]\n${item.summary || (item.content ? item.content.slice(0, 400) : '')}`)
+      .join('\n\n---\n\n');
+  }
+
+  fragments.sort((a, b) => b.score - a.score);
+
+  let contextParts: string[] = [];
+  let currentLength = 0;
+  const maxLength = 5000;
+
+  for (const frag of fragments) {
+    const text = `[Fragmento de: ${frag.source}]\n${frag.content}`;
+    if (currentLength + text.length > maxLength) {
+      break;
+    }
+    contextParts.push(text);
+    currentLength += text.length;
+  }
+
+  return contextParts.join('\n\n---\n\n');
+}
+
 export async function queryKnowledgeBase(
   userQuestion: string,
   chatHistory: { sender: string; message: string }[] = []
 ): Promise<string> {
   // 1. Fetch context from indexed knowledge base
   const kbItems = await db.getKBItems();
-  const contextBlock = kbItems
-    .map((item) => `[Archivo: ${item.title} (${item.file_type})]\n${item.content}`)
-    .join('\n\n---\n\n');
+  const contextBlock = retrieveRelevantContext(userQuestion, kbItems);
 
   const formattedHistory = chatHistory
     .slice(-8)
@@ -157,8 +235,8 @@ PROGRAMA DE FIDELIZACIÓN (HERRAMIENTA DE ENGANCHE)
 El cliente recibe 1 producto GRATIS al acumular:
   • 80 puntos en compras regulares (equivale a 4 cajas) en máx. 12 semanas.
   • 60 puntos en Club Autoenvío (equivale a 3 cajas) en máx. 12 semanas.
-Canje: automático en la web oficial. El cliente inicia sesión, agrega al carrito y el sistema le permite elegir su caja gratis antes de pagar.
-Usa este programa como herramienta de enganche cuando el cliente dude o pregunte por descuentos.
+  Canje: automático en la web oficial. El cliente inicia sesión, agrega al carrito y el sistema le permite elegir su caja gratis antes de pagar.
+  Usa este programa como herramienta de enganche cuando el cliente dude o pregunte por descuentos.
 
 ═══════════════════════════════════════════
 PROTOCOLO DE REGISTRO OFICIAL — CRÍTICO
@@ -219,7 +297,6 @@ ${userQuestion}`;
       } else {
         console.error('[gemini] Gemini error:', msg, '— trying Groq fallback');
       }
-      // Fall through to Groq regardless of error type
     }
   }
 
@@ -248,22 +325,41 @@ ${userQuestion}`;
   const normalize = (s: string) =>
     s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-  const qNorm = normalize(userQuestion).replace(/[¿?¡!.,;:]/g, '');
+  const qNorm = normalize(userQuestion).replace(/[¿?¡!.,;:]/g, '').trim();
 
-  // Saludos
-  const greetingWords = ['hola', 'buenos dias', 'buenas tardes', 'buenas noches', 'hi', 'hello', 'saludos', 'buen dia'];
-  if (greetingWords.some(g => qNorm.includes(g))) {
+  // 1. Detectar respuestas cortas afirmativas/negativas basadas en el historial
+  const positiveWords = ['si', 'sí', 'claro', 'por favor', 'porfavor', 'quiero', 'dale', 'aceptar', 'ok', 'bueno', 'sii', 'siis'];
+  const negativeWords = ['no', 'gracias', 'despues', 'luego', 'cancelar', 'no gracias'];
+
+  const isPositive = positiveWords.some(w => qNorm === w);
+  const isNegative = negativeWords.some(w => qNorm === w);
+
+  if ((isPositive || isNegative) && chatHistory.length > 0) {
+    const lastBotMessage = [...chatHistory].reverse().find(m => m.sender === 'bot' || m.sender === 'agent')?.message || '';
+    const lastBotLower = lastBotMessage.toLowerCase();
+    
+    if (lastBotLower.includes('solicitarlo hoy mismo') || lastBotLower.includes('programar la compra') || lastBotLower.includes('programado el pago')) {
+      if (isPositive) {
+        return '¡Excelente! Para activar tu cuenta oficial de Cliente Preferente y programar tu entrega necesito los siguientes datos en un solo mensaje:\n\n1️⃣ Nombres y Apellidos completos\n2️⃣ Número de DNI\n3️⃣ Número de Celular\n4️⃣ Correo electrónico';
+      } else {
+        return 'Entendido. Quedo atento a cuando desees realizar tu pedido o si tienes alguna otra consulta. ¡Que tengas un excelente día! 😊';
+      }
+    }
+  }
+
+  // 2. Saludos
+  const greetingWords = ['hola', 'buenos dias', 'buenas tardes', 'buenas noches', 'hi', 'hello', 'saludos', 'buen dia', 'hla'];
+  if (greetingWords.some(g => qNorm.split(/\s+/).includes(g))) {
     return '¡Hola! Bienvenido a Fuxion Perú 😊 ¿En qué puedo ayudarte hoy? ¿Buscas algún producto en especial?';
   }
 
-  // Stopwords to ignore when extracting query keywords
   const stopwords = new Set([
     'que', 'cual', 'como', 'para', 'con', 'sin', 'del', 'los', 'las', 'una',
     'uno', 'por', 'hay', 'este', 'ese', 'eso', 'esa', 'mas', 'pero', 'pues',
     'porque', 'tiene', 'tienes', 'quiero', 'queria', 'quisiera', 'dame', 'dime',
     'saber', 'decir', 'informacion', 'sobre', 'acerca', 'favor', 'gracias',
     'bueno', 'bien', 'ser', 'estar', 'tengo', 'puedo', 'puede', 'deseo',
-    'necesito', 'hola', 'oye', 'mira', 'hay', 'me', 'te', 'le', 'nos'
+    'necesito', 'hola', 'oye', 'mira', 'me', 'te', 'le', 'nos', 'y', 'o', 'un'
   ]);
 
   const queryWords = qNorm
@@ -274,42 +370,42 @@ ${userQuestion}`;
     return '¡Hola! ¿En qué producto Fuxion puedo ayudarte hoy? 😊';
   }
 
-  // Search KB content: score each line by how many query words it contains
+  // 3. Buscar coincidencia por fragmentos/párrafos
   let bestScore = 0;
-  let bestLines: string[] = [];
+  let bestFragments: string[] = [];
 
   for (const item of kbItems) {
-    const lines = item.content
-      .split('\n')
-      .map((l: string) => l.trim())
-      .filter((l: string) => l.length > 8);
+    const rawContent = item.content || '';
+    const paragraphs = rawContent
+      .split(/\n\s*\n/)
+      .map((p: string) => p.trim())
+      .filter((p: string) => p.length > 10);
 
-    for (const line of lines) {
-      const lineNorm = normalize(line);
+    for (const para of paragraphs) {
+      const paraNorm = normalize(para);
       const score = queryWords.filter(w => {
         const escapedWord = w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const regex = new RegExp('(?:^|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ])' + escapedWord + '(?:$|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ])', 'i');
-        return regex.test(lineNorm);
+        return regex.test(paraNorm);
       }).length;
+
       if (score > bestScore) {
         bestScore = score;
-        bestLines = [line];
-      } else if (score === bestScore && score > 0 && bestLines.length < 3) {
-        bestLines.push(line);
+        bestFragments = [para];
+      } else if (score === bestScore && score > 0 && bestFragments.length < 2) {
+        bestFragments.push(para);
       }
     }
   }
 
   if (bestScore > 0) {
-    // Return a condensed answer from the best matching lines
-    const snippet = bestLines
-      .slice(0, 2)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .substring(0, 280);
+    const bestPara = bestFragments[0];
+    const answerMatch = bestPara.match(/Answer:\s*([\s\S]+)$/i);
+    let snippet = answerMatch ? answerMatch[1].trim() : bestPara;
+    snippet = snippet.replace(/Question:[\s\S]+?Answer:/i, '').trim();
+
     return `${snippet}\n\n¿Te gustaría solicitarlo hoy mismo? 😊`;
   }
 
-  // Nothing found — trigger shadow mode
   return '[UNKNOWN]';
 }
