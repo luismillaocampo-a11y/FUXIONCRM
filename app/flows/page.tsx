@@ -208,11 +208,11 @@ function CouponNode({ data }: any) {
 function UpdateStatusNode({ data }: any) {
   const translateStatus = (status: string) => {
     switch (status) {
-      case 'New': return 'Nuevo';
-      case 'Engaged': return 'Interactuando';
-      case 'Pending Verification': return 'Verificación Pendiente';
+      case 'New': return 'Nuevo/Prospecto';
+      case 'Engaged': return 'Interactuando/info enviada';
+      case 'Pending Verification': return 'Esperando pago';
       case 'Converted': return 'Venta Confirmada';
-      case 'Por Registrar en Web': return 'Por Registrar en Web';
+      case 'Por Registrar en Web': return 'Registrar en Web/Por Despachar';
       default: return status;
     }
   };
@@ -262,21 +262,21 @@ const nodeTypes = {
 };
 
 // Componente auxiliar para evitar pérdida de cursor y scroll en áreas de texto controladas
-function ControlledTextArea({ 
-  value, 
-  onChange, 
-  placeholder, 
-  className, 
-  rows = 12 
-}: { 
-  value: string; 
-  onChange: (val: string) => void; 
-  placeholder?: string; 
-  className?: string; 
-  rows?: number; 
+function ControlledTextArea({
+  value,
+  onChange,
+  placeholder,
+  className,
+  rows = 12
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  className?: string;
+  rows?: number;
 }) {
   const [localValue, setLocalValue] = useState(value);
-  
+
   useEffect(() => {
     setLocalValue(value);
   }, [value]);
@@ -614,6 +614,90 @@ export default function FlowBuilder() {
         text: `Calculamos tus fechas estimadas de envío. Elige el horario conveniente para ti:`,
         options: [`Rango 24 Horas (Entrega el ${t24})`, `Rango 48 Horas (Entrega el ${t48})`]
       }]);
+    }
+
+    // 5. NODO ESPERAR (WAIT DELAY)
+    else if (node.type === 'waitDelay') {
+      const delay = node.data.delayHours || 24;
+      setSimMessages(prev => [...prev, {
+        sender: 'system',
+        text: `⏳ [CRM] Temporizador de seguimiento programado por ${delay} horas.`
+      }]);
+      if (node.data.message) {
+        setSimMessages(prev => [...prev, {
+          sender: 'system',
+          text: `📝 [CRM] Mensaje de seguimiento configurado: "${node.data.message}"`
+        }]);
+      }
+      
+      const edge = edges.find(e => e.source === node.id);
+      if (edge) {
+        setSimMessages(prev => [...prev, { sender: 'system', text: `⌛ Simulando expiración de tiempo... reanudando flujo.` }]);
+        setTimeout(() => executeSimulationStep(edge.target), 1500);
+      } else {
+        setCurrentNodeId(null);
+      }
+    }
+
+    // 6. NODO CUPÓN (COUPON)
+    else if (node.type === 'coupon') {
+      const code = node.data.code || 'FUXION10';
+      const product = node.data.product || 'Thermo T3';
+      const expiry = node.data.expiryHours || 48;
+      const text = node.data.message || `¡Aquí tienes tu cupón de descuento del 10% en tu ${product}! Código: ${code} (Válido por ${expiry} horas)`;
+      
+      setSimMessages(prev => [...prev, {
+        sender: 'bot',
+        text
+      }]);
+
+      const edge = edges.find(e => e.source === node.id);
+      if (edge) {
+        setTimeout(() => executeSimulationStep(edge.target), 1200);
+      } else {
+        setCurrentNodeId(null);
+      }
+    }
+
+    // 7. NODO CAMBIAR ESTADO (UPDATE STATUS)
+    else if (node.type === 'updateStatus') {
+      const rawStatus = node.data.status || 'Engaged';
+      const statusLabels: Record<string, string> = {
+        'New': 'Nuevo/Prospecto',
+        'Engaged': 'Interactuando/info enviada',
+        'Pending Verification': 'Esperando pago',
+        'Por Registrar en Web': 'Por Registrar en Web/Por Despachar',
+        'Converted': 'Venta Confirmada'
+      };
+      const readable = statusLabels[rawStatus] || rawStatus;
+
+      setSimMessages(prev => [...prev, {
+        sender: 'system',
+        text: `📊 [CRM] Estado del lead actualizado a: "${readable}"`
+      }]);
+
+      const edge = edges.find(e => e.source === node.id);
+      if (edge) {
+        setTimeout(() => executeSimulationStep(edge.target), 1000);
+      } else {
+        setCurrentNodeId(null);
+      }
+    }
+
+    // 8. NODO ALERTA AL AGENTE (ALERT AGENT)
+    else if (node.type === 'alertAgent') {
+      const alertMsg = node.data.message || 'El cliente tiene dudas con el pago de su Thermo T3.';
+      setSimMessages(prev => [...prev, {
+        sender: 'system',
+        text: `🔔 [CRM] Alerta enviada al Agente: "${alertMsg}"`
+      }]);
+
+      const edge = edges.find(e => e.source === node.id);
+      if (edge) {
+        setTimeout(() => executeSimulationStep(edge.target), 1000);
+      } else {
+        setCurrentNodeId(null);
+      }
     }
   };
 
@@ -1331,10 +1415,10 @@ export default function FlowBuilder() {
                     onChange={(e) => updateNodeData({ status: e.target.value })}
                     className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-cyan-500/50"
                   >
-                    <option value="New">Nuevo</option>
-                    <option value="Engaged">Interactuando</option>
-                    <option value="Pending Verification">Verificación Pendiente</option>
-                    <option value="Por Registrar en Web">Por Registrar en Web</option>
+                    <option value="New">Nuevo/Prospecto</option>
+                    <option value="Engaged">Interactuando/info enviada</option>
+                    <option value="Pending Verification">Esperando pago</option>
+                    <option value="Por Registrar en Web">Por Registrar en Web/Por Despachar</option>
                     <option value="Converted">Venta Confirmada</option>
                   </select>
                 </div>

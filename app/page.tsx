@@ -917,12 +917,18 @@ export default function CRMDashboard() {
   // Traducir estados para la visualización del usuario
   const translateStatus = (status: string) => {
     switch (status) {
-      case 'New': return 'Nuevo';
-      case 'Engaged': return 'Interactuando';
-      case 'Pending Verification': return 'Verificación Pendiente';
-      case 'Converted': return 'Venta Confirmada';
-      case 'Por Registrar en Web': return 'Por Registrar en Web';
-      default: return status;
+      case 'New': 
+        return 'Nuevo/Prospecto';
+      case 'Engaged': 
+        return 'Interactuando/info enviada';
+      case 'Pending Verification': 
+        return 'Esperando pago';
+      case 'Por Registrar en Web': 
+        return 'Por Registrar en Web/Por Despachar';
+      case 'Converted': 
+        return 'Venta Confirmada';
+      default: 
+        return status;
     }
   };
 
