@@ -42,3 +42,5 @@ next-env.d.ts
 
 .vercel
 .env*
+/whatsapp_auth
+/db.sqlite
