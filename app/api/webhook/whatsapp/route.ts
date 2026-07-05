@@ -421,8 +421,35 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Stop if bot is inactive (Shadow Mode / paused) for this lead
-    const isBotActive = activeLead.bot_active === 1 || activeLead.bot_active === true;
+    // Detectar si el mensaje es un disparador de un flujo activo para reactivar el bot
+    let isBotActive = activeLead.bot_active === 1 || activeLead.bot_active === true;
+    
+    const flows = await db.getFlows();
+    const activeFlows = flows.filter((f: any) => f.is_active);
+
+    let messageTriggersFlow = false;
+    for (const flow of activeFlows) {
+      if (flow.nodes) {
+        const triggerNode = flow.nodes.find((n: any) => n.type === 'trigger');
+        if (triggerNode) {
+          const keywords = (triggerNode.data.keyword || '').split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
+          const cleanText = messageText.toLowerCase().trim();
+          const matches = keywords.some((k: string) => cleanText === k || (cleanText.length <= k.length + 3 && cleanText.includes(k)));
+          if (matches) {
+            messageTriggersFlow = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (messageTriggersFlow) {
+      console.log(`[webhook/whatsapp] Mensaje coincide con disparador. Reactivando bot para ${leadId}.`);
+      await db.updateLeadBotActive(activeLead.id, true);
+      isBotActive = true;
+      whatsappService.flowState.delete(leadId);
+    }
+
     if (!isBotActive) {
       console.log(`[webhook/whatsapp] Bot is paused for lead ${leadId}. Message logged.`);
       return NextResponse.json({ success: true, message: 'Message logged. Bot is paused.' });
@@ -438,8 +465,6 @@ export async function POST(request: Request) {
     }));
 
     // 3.5. Flow Priority System Check
-    const flows = await db.getFlows();
-    const activeFlows = flows.filter((f: any) => f.is_active);
 
     const hasIAControl = hasActiveIAConversation(historyMessages, activeFlows);
     const isWaitingClose = activeLead.status === 'Pending Verification';

@@ -206,8 +206,36 @@ class WhatsAppService {
               // FLUJO AUTOMÁTICO vs IA (Gemini)
               // ==========================================
               const currentLead = await db.getLeadById(leadId);
-              const isBotActive = currentLead ? (currentLead.bot_active === 1 || currentLead.bot_active === true) : true;
+              let isBotActive = currentLead ? (currentLead.bot_active === 1 || currentLead.bot_active === true) : true;
               const aiGloballyEnabled = typeof globalThis.AI_GLOBALLY_ENABLED === 'undefined' ? true : globalThis.AI_GLOBALLY_ENABLED;
+
+              // Detectar si el mensaje es un disparador de un flujo activo para reactivar el bot
+              if (sender === 'customer') {
+                const flows = await db.getFlows();
+                const activeFlows = flows.filter((f: any) => f.is_active);
+                let messageTriggersFlow = false;
+                for (const flow of activeFlows) {
+                  if (flow.nodes) {
+                    const triggerNode = flow.nodes.find((n: any) => n.type === 'trigger');
+                    if (triggerNode) {
+                      const keywords = (triggerNode.data.keyword || '').split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
+                      const cleanText = text.toLowerCase().trim();
+                      const matches = keywords.some((k: string) => cleanText === k || (cleanText.length <= k.length + 3 && cleanText.includes(k)));
+                      if (matches) {
+                        messageTriggersFlow = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                if (messageTriggersFlow) {
+                  console.log(`[WhatsAppService] Mensaje coincide con disparador. Reactivando bot para ${leadId}.`);
+                  await db.updateLeadBotActive(leadId, true);
+                  isBotActive = true;
+                  this.flowState.delete(leadId);
+                }
+              }
 
               if (sender === 'customer' && isBotActive) {
                 try {
