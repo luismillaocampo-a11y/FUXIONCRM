@@ -11,6 +11,24 @@ type QrWaiter = {
   timer: NodeJS.Timeout;
 };
 
+class PersistentFlowStateMap extends Map<string, string> {
+  set(key: string, value: string): this {
+    super.set(key, value);
+    db.setLeadFlowState(key, value).catch(err => console.error('[FlowStateMap] Error setting DB flow state:', err));
+    return this;
+  }
+  delete(key: string): boolean {
+    const res = super.delete(key);
+    db.setLeadFlowState(key, null).catch(err => console.error('[FlowStateMap] Error deleting DB flow state:', err));
+    return res;
+  }
+  loadStates(states: { [key: string]: string }) {
+    for (const [key, value] of Object.entries(states)) {
+      super.set(key, value);
+    }
+  }
+}
+
 class WhatsAppService {
   private initPromise: Promise<void> | null = null;
   private socket: any | null = null;
@@ -21,7 +39,7 @@ class WhatsAppService {
   private qrWaiters: QrWaiter[] = [];
   private isResetting = false;
   private wasConnected = false;
-  public flowState = new Map<string, string>(); // Guarda en qué nodo del flujo está cada cliente
+  public flowState = new PersistentFlowStateMap(); // Guarda en qué nodo del flujo está cada cliente
   private recentBotMessages = new Set<string>();
 
   public async initialize(force: boolean = false) {
@@ -47,6 +65,15 @@ class WhatsAppService {
     this.latestQrDataUrl = null;
     this.initPromise = (async () => {
       try {
+        // Preload active flow states from database
+        try {
+          const states = await db.getAllFlowStates();
+          this.flowState.loadStates(states);
+          console.log(`[WhatsAppService] Preloaded ${Object.keys(states).length} active flow states from database.`);
+        } catch (preloadErr) {
+          console.error('[WhatsAppService] Error preloading flow states:', preloadErr);
+        }
+
         const baileys = await import('@whiskeysockets/baileys');
         const makeWASocket = baileys.makeWASocket;
 

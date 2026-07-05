@@ -32,15 +32,18 @@ async function check() {
     if (error) {
       console.error(error);
     } else if (flow) {
-      console.log('Flow name:', flow.name);
-      console.log('Flow is_active:', flow.is_active);
-      const trigger = flow.nodes.find((n: any) => n.type === 'trigger');
-      console.log('Trigger Node keyword data:', JSON.stringify(trigger?.data));
+      console.log('Flow Name:', flow.name);
+      console.log('Nodes:');
+      flow.nodes.forEach((n: any) => {
+        console.log(`- Node [${n.id}] type: ${n.type}, label: ${n.data?.label}, buttons: ${JSON.stringify(n.data?.buttons)}, message: ${JSON.stringify(n.data?.message)}`);
+      });
+      console.log('Edges:');
+      flow.edges.forEach((e: any) => {
+        console.log(`- Edge [${e.id}] source: ${e.source}, target: ${e.target}, sourceHandle: ${e.sourceHandle}, targetHandle: ${e.targetHandle}`);
+      });
     } else {
-      console.log('No active flow found in Supabase');
+      console.log('No active flow found');
     }
-  } else {
-    console.error('Supabase config missing');
   }
 }
 

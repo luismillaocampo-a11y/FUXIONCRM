@@ -289,6 +289,24 @@ function parseWhatsappSessionRow(row: any) {
   };
 }
 
+function cleanLeadTags(lead: any): any {
+  if (!lead) return lead;
+  let rawTags = lead.tags;
+  if (typeof rawTags === 'string') {
+    try {
+      rawTags = JSON.parse(rawTags);
+    } catch (e) {
+      rawTags = [];
+    }
+  }
+  if (Array.isArray(rawTags)) {
+    lead.tags = rawTags.filter((t: string) => !t.startsWith('flowState:'));
+  } else {
+    lead.tags = [];
+  }
+  return lead;
+}
+
 async function getWhatsappSession(sessionId: string = 'default') {
   if (useSupabase) {
     const res = await runSupabaseQuery((c) => c.from('whatsapp_sessions').select('*').eq('id', sessionId).maybeSingle());
@@ -414,7 +432,7 @@ export const db = {
             counts[msg.lead_id] = (counts[msg.lead_id] || 0) + 1;
           }
         }
-        return leads.map((l: any) => ({
+        return leads.map((l: any) => cleanLeadTags({
           ...l,
           unread_count: counts[l.id] || 0
         }));
@@ -429,7 +447,7 @@ export const db = {
       for (const msg of unreadData) {
         counts[msg.lead_id] = (counts[msg.lead_id] || 0) + 1;
       }
-      return leads.map((l: any) => ({
+      return leads.map((l: any) => cleanLeadTags({
         ...l,
         tags: JSON.parse(l.tags),
         bot_active: Boolean(l.bot_active),
@@ -442,18 +460,18 @@ export const db = {
     const realId = await this.normalizeLeadId(id);
     if (useSupabase) {
       const res = await runSupabaseQuery((c) => c.from('leads').select('*').eq('id', realId).single());
-      if (res && !res.error) return res.data;
+      if (res && !res.error) return cleanLeadTags(res.data);
       // fall through to sqlite fallback
     }
     {
       const db = getSqliteDb();
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(realId) as any;
       if (!lead) return null;
-      return {
+      return cleanLeadTags({
         ...lead,
         tags: JSON.parse(lead.tags),
         bot_active: Boolean(lead.bot_active)
-      };
+      });
     }
   },
 
@@ -540,9 +558,30 @@ export const db = {
 
   async updateLeadTags(id: string, tags: string[]): Promise<void> {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    const tagsStr = JSON.stringify(tags);
+    const existing = await this.getLeadById(id);
+    let finalTags = [...tags];
+    if (existing) {
+      let dbTags: string[] = [];
+      if (useSupabase) {
+        const res = await runSupabaseQuery((c) => c.from('leads').select('tags').eq('id', existing.id).single());
+        if (res && !res.error && res.data) {
+          dbTags = res.data.tags || [];
+        }
+      } else {
+        const db = getSqliteDb();
+        const row = db.prepare('SELECT tags FROM leads WHERE id = ?').get(existing.id) as any;
+        if (row?.tags) {
+          try {
+            dbTags = JSON.parse(row.tags);
+          } catch(e){}
+        }
+      }
+      const flowStateTags = dbTags.filter((t: string) => t.startsWith('flowState:'));
+      finalTags = [...finalTags, ...flowStateTags];
+    }
+    const tagsStr = JSON.stringify(finalTags);
     if (useSupabase) {
-      const query = getSupabase().from('leads').update({ tags, updated_at: new Date().toISOString() });
+      const query = getSupabase().from('leads').update({ tags: finalTags, updated_at: new Date().toISOString() });
       const { error } = isUuid ? query.eq('id', id) : query.eq('phone', id);
       if (error) throw error;
     } else {
@@ -564,6 +603,99 @@ export const db = {
       const dbId = isUuid ? id : await this.normalizeLeadId(id);
       db.prepare('UPDATE leads SET bot_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(activeVal, dbId);
     }
+  },
+
+  async getLeadFlowState(leadId: string): Promise<string | null> {
+    const realId = await this.normalizeLeadId(leadId);
+    let dbTags: string[] = [];
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('leads').select('tags').eq('id', realId).single());
+      if (res && !res.error && res.data) {
+        dbTags = res.data.tags || [];
+      }
+    } else {
+      const db = getSqliteDb();
+      const row = db.prepare('SELECT tags FROM leads WHERE id = ?').get(realId) as any;
+      if (row?.tags) {
+        try {
+          dbTags = JSON.parse(row.tags);
+        } catch(e){}
+      }
+    }
+    const flowTag = dbTags.find((t: string) => t.startsWith('flowState:'));
+    return flowTag ? flowTag.substring('flowState:'.length) : null;
+  },
+
+  async setLeadFlowState(leadId: string, nodeId: string | null): Promise<void> {
+    const realId = await this.normalizeLeadId(leadId);
+    let dbTags: string[] = [];
+    let isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(realId);
+    
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('leads').select('tags').eq('id', realId).single());
+      if (res && !res.error && res.data) {
+        dbTags = res.data.tags || [];
+      }
+    } else {
+      const db = getSqliteDb();
+      const row = db.prepare('SELECT tags FROM leads WHERE id = ?').get(realId) as any;
+      if (row?.tags) {
+        try {
+          dbTags = JSON.parse(row.tags);
+        } catch(e){}
+      }
+    }
+    
+    let finalTags = dbTags.filter((t: string) => !t.startsWith('flowState:'));
+    if (nodeId) {
+      finalTags.push(`flowState:${nodeId}`);
+    }
+    
+    const tagsStr = JSON.stringify(finalTags);
+    if (useSupabase) {
+      const query = getSupabase().from('leads').update({ tags: finalTags, updated_at: new Date().toISOString() });
+      const { error } = isUuid ? query.eq('id', realId) : query.eq('phone', realId);
+      if (error) throw error;
+    } else {
+      const db = getSqliteDb();
+      const dbId = isUuid ? realId : await this.normalizeLeadId(realId);
+      db.prepare('UPDATE leads SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(tagsStr, dbId);
+    }
+  },
+
+  async getAllFlowStates(): Promise<{ [leadId: string]: string }> {
+    let leads: any[] = [];
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('leads').select('id, tags'));
+      if (res && !res.error) {
+        leads = res.data || [];
+      }
+    } else {
+      const db = getSqliteDb();
+      try {
+        leads = db.prepare('SELECT id, tags FROM leads').all() as any[];
+      } catch (e) {
+        leads = [];
+      }
+    }
+    
+    const states: { [leadId: string]: string } = {};
+    for (const lead of leads) {
+      let tags: string[] = [];
+      if (typeof lead.tags === 'string') {
+        try {
+          tags = JSON.parse(lead.tags);
+        } catch(e){}
+      } else if (Array.isArray(lead.tags)) {
+        tags = lead.tags;
+      }
+      
+      const flowTag = tags.find((t: string) => t.startsWith('flowState:'));
+      if (flowTag) {
+        states[lead.id] = flowTag.substring('flowState:'.length);
+      }
+    }
+    return states;
   },
 
   // --- FLOWS ---
