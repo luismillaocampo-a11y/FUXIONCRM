@@ -16,7 +16,7 @@ const whatsappJsonReviver = (_key: any, value: any) => {
 
 // Environment variables
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseAnonKey = (typeof window === 'undefined' ? process.env.SUPABASE_SERVICE_KEY : null) || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 if (typeof window === 'undefined') {
   console.log(
