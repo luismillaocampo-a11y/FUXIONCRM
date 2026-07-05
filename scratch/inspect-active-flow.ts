@@ -23,20 +23,21 @@ const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC
 async function check() {
   if (supabaseUrl && supabaseAnonKey) {
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data: flows, error } = await supabase
+    const { data: flow, error } = await supabase
       .from('flows')
-      .select('*');
+      .select('*')
+      .eq('is_active', true)
+      .maybeSingle();
       
     if (error) {
-      console.error('Error fetching flows:', error);
+      console.error(error);
+    } else if (flow) {
+      console.log('Flow name:', flow.name);
+      console.log('Flow is_active:', flow.is_active);
+      const trigger = flow.nodes.find((n: any) => n.type === 'trigger');
+      console.log('Trigger Node keyword data:', JSON.stringify(trigger?.data));
     } else {
-      console.log('Flows count:', flows?.length);
-      flows?.forEach(f => {
-        console.log(`Flow ID: ${f.id}, Name: ${f.name}, Active: ${f.is_active}`);
-        console.log('Type of nodes:', typeof f.nodes, Array.isArray(f.nodes) ? 'Array' : 'Not Array');
-        console.log('Type of edges:', typeof f.edges, Array.isArray(f.edges) ? 'Array' : 'Not Array');
-        console.log('Nodes sample:', JSON.stringify(f.nodes).slice(0, 150));
-      });
+      console.log('No active flow found in Supabase');
     }
   } else {
     console.error('Supabase config missing');

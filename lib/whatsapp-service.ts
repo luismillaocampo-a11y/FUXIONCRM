@@ -218,7 +218,11 @@ class WhatsAppService {
                   if (flow.nodes) {
                     const triggerNode = flow.nodes.find((n: any) => n.type === 'trigger');
                     if (triggerNode) {
-                      const keywords = (triggerNode.data.keyword || '').split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
+                      let keywordStr = triggerNode.data.keyword || '';
+                      if (!keywordStr.trim()) {
+                        keywordStr = 'hola, empezar, inicio, menú, menu';
+                      }
+                      const keywords = keywordStr.split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
                       const cleanText = text.toLowerCase().trim();
                       const matches = keywords.some((k: string) => cleanText === k || (cleanText.length <= k.length + 3 && cleanText.includes(k)));
                       if (matches) {
@@ -427,7 +431,11 @@ class WhatsAppService {
     if (!this.flowState.has(leadId)) {
       const triggerNode = nodes.find((n: any) => n.type === 'trigger');
       if (triggerNode) {
-        const keywords = (triggerNode.data.keyword || '').split(',').map((k: string) => k.trim().toLowerCase());
+        let keywordStr = triggerNode.data.keyword || '';
+        if (!keywordStr.trim()) {
+          keywordStr = 'hola, empezar, inicio, menú, menu';
+        }
+        const keywords = keywordStr.split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
         if (keywords.some((k: string) => text.toLowerCase().includes(k))) {
           const edge = edges.find((e: any) => e.source === triggerNode.id);
           if (edge) {
@@ -465,7 +473,11 @@ class WhatsAppService {
       // SI ESCRIBIÓ ALGO QUE NO ES UN BOTÓN: 
       // Solo reiniciar si es una palabra clave EXACTA y corta (evitar cruzar saludos si preguntan "hola, cuanto cuesta X")
       const triggerNode = nodes.find((n: any) => n.type === 'trigger');
-      const triggerKeywords = (triggerNode?.data?.keyword || '').split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
+      let triggerKeywordStr = triggerNode?.data?.keyword || '';
+      if (!triggerKeywordStr.trim()) {
+        triggerKeywordStr = 'hola, empezar, inicio, menú, menu';
+      }
+      const triggerKeywords = triggerKeywordStr.split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
       const cleanText = text.toLowerCase().trim();
       
       const isExactKeyword = triggerKeywords.some((k: string) => cleanText === k || (cleanText.length <= k.length + 3 && cleanText.includes(k)));
