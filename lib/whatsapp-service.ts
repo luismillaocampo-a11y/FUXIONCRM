@@ -180,6 +180,28 @@ class WhatsAppService {
               console.log(`[WhatsAppService] ✅ Mensaje GUARDADO en BD. Lead: ${leadId}, Sender: ${sender}`);
               console.log(`Saved WhatsApp message for lead ${leadId}: sender = ${sender}, text:`, text.slice(0, 100));
 
+              // Detectar si el cliente envió un comprobante (imagen/foto) después de recibir datos de pago
+              const isPaymentAttachment = sender === 'customer' && (message.imageMessage || text === '[Foto]');
+              if (isPaymentAttachment) {
+                const recentMsgs = await db.getMessages(leadId);
+                const hasSentPaymentDetails = recentMsgs.slice(-5).some(m => {
+                  if (m.sender !== 'bot' && m.sender !== 'agent') return false;
+                  const msgLower = m.message.toLowerCase();
+                  return msgLower.includes('955252932') || msgLower.includes('yape') || msgLower.includes('plin') || msgLower.includes('transferenci');
+                });
+
+                if (hasSentPaymentDetails) {
+                  console.log(`[WhatsAppService] 💳 Comprobante recibido para el lead ${leadId}. Actualizando a Verificación Pendiente y pausando bot.`);
+                  await db.updateLeadStatus(leadId, 'Pending Verification');
+                  await db.updateLeadBotActive(leadId, false);
+                  
+                  const autoReply = '¡Muchas gracias por tu pago! Tu comprobante ha sido recibido. Un asesor humano lo verificará en unos minutos y procederemos con tu entrega. ¡Que tengas un excelente día! 😊';
+                  await db.addMessage(leadId, 'bot', autoReply);
+                  await this.sendMessageToPhone(phone, autoReply);
+                  continue; // Ya respondimos al comprobante, saltar procesamiento normal
+                }
+              }
+
               // ==========================================
               // FLUJO AUTOMÁTICO vs IA (Gemini)
               // ==========================================
@@ -639,7 +661,12 @@ class WhatsAppService {
         if (type === 'conversation') return payload;
         if (type === 'extendedTextMessage') return payload?.text || payload?.contextInfo?.quotedMessage?.conversation || null;
         if (type === 'imageMessage' || type === 'videoMessage' || type === 'documentMessage' || type === 'audioMessage') {
-          return payload?.caption || null;
+          if (payload?.caption) return payload.caption;
+          if (type === 'imageMessage') return '[Foto]';
+          if (type === 'documentMessage') return '[Documento]';
+          if (type === 'videoMessage') return '[Video]';
+          if (type === 'audioMessage') return '[Audio]';
+          return null;
         }
         if (type === 'stickerMessage') return payload?.url ? 'Sticker' : null;
         if (type === 'buttonsResponseMessage') return payload?.selectedButtonId || payload?.selectedDisplayText || null;

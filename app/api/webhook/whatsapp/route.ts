@@ -73,7 +73,12 @@ function extractMessageText(message: any): string | null {
       if (type === 'conversation') return payload;
       if (type === 'extendedTextMessage') return payload?.text || payload?.contextInfo?.quotedMessage?.conversation || null;
       if (type === 'imageMessage' || type === 'videoMessage' || type === 'documentMessage' || type === 'audioMessage') {
-        return payload?.caption || null;
+        if (payload?.caption) return payload.caption;
+        if (type === 'imageMessage') return '[Foto]';
+        if (type === 'documentMessage') return '[Documento]';
+        if (type === 'videoMessage') return '[Video]';
+        if (type === 'audioMessage') return '[Audio]';
+        return null;
       }
       if (type === 'stickerMessage') return payload?.url ? 'Sticker' : null;
       if (type === 'buttonsResponseMessage') return payload?.selectedButtonId || payload?.selectedDisplayText || null;
@@ -392,6 +397,28 @@ export async function POST(request: Request) {
       }, { onConflict: 'id' });
     } else {
       await db.addMessage(leadId, 'customer', messageText);
+    }
+
+    // Detectar si el cliente envió un comprobante (imagen/foto) después de recibir datos de pago
+    const isPaymentAttachment = messageObj.imageMessage || messageText === '[Foto]';
+    if (isPaymentAttachment) {
+      const recentMsgs = await db.getMessages(leadId);
+      const hasSentPaymentDetails = recentMsgs.slice(-5).some(m => {
+        if (m.sender !== 'bot' && m.sender !== 'agent') return false;
+        const msgLower = m.message.toLowerCase();
+        return msgLower.includes('955252932') || msgLower.includes('yape') || msgLower.includes('plin') || msgLower.includes('transferenci');
+      });
+
+      if (hasSentPaymentDetails) {
+        console.log(`[webhook/whatsapp] 💳 Comprobante recibido para el lead ${leadId}. Actualizando a Verificación Pendiente y pausando bot.`);
+        await db.updateLeadStatus(leadId, 'Pending Verification');
+        await db.updateLeadBotActive(leadId, false);
+        
+        const autoReply = '¡Muchas gracias por tu pago! Tu comprobante ha sido recibido. Un asesor humano lo verificará en unos minutos y procederemos con tu entrega. ¡Que tengas un excelente día! 😊';
+        await db.addMessage(leadId, 'bot', autoReply);
+        await sendWhatsAppMessage(activeLead.phone || phone, autoReply);
+        return NextResponse.json({ success: true, reply: autoReply });
+      }
     }
 
     // 3. Stop if bot is inactive (Shadow Mode / paused) for this lead
