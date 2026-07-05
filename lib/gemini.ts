@@ -193,6 +193,32 @@ export async function queryKnowledgeBase(
   userQuestion: string,
   chatHistory: { sender: string; message: string }[] = []
 ): Promise<string> {
+  const normWord = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+  const qNorm = normWord(userQuestion).replace(/[¿?¡!.,;:]/g, '');
+
+  // 1. Programmatic State Guard: Prevent payment looping
+  const positiveWords = ['si', 'sí', 'claro', 'por favor', 'porfavor', 'quiero', 'dale', 'aceptar', 'ok', 'bueno', 'sii', 'siis', 'ya', 'listo', 'ya lo hice', 'ya lo mande', 'si ahora', 'ya esta', 'ya esta pago'];
+  const isPositive = positiveWords.some(w => qNorm === w || qNorm.startsWith(w));
+
+  if (isPositive && chatHistory.length > 0) {
+    const recentBotMessages = [...chatHistory]
+      .reverse()
+      .filter(m => m.sender === 'bot' || m.sender === 'agent')
+      .slice(0, 2);
+
+    const hasSentPaymentDetails = recentBotMessages.some(m => {
+      const msgLower = m.message.toLowerCase();
+      return msgLower.includes('955252932') || msgLower.includes('yape') || msgLower.includes('plin') || msgLower.includes('transferenci');
+    });
+
+    if (hasSentPaymentDetails) {
+      console.log('[gemini] 🛡️ Intercepted by Payment Anti-Loop Guard');
+      return '¡Perfecto! Quedo super atento al envío de la captura del comprobante por aquí para registrar tu pedido de inmediato. ¡Muchas gracias!';
+    }
+  }
+
   // 1. Fetch context from indexed knowledge base
   const kbItems = await db.getKBItems();
   const contextBlock = retrieveRelevantContext(userQuestion, kbItems);
@@ -231,9 +257,15 @@ LOGÍSTICA Y PAGOS
 ═══════════════════════════════════════════
 CIERRE DE COMPRA Y CAPTURA DE DATOS — CRÍTICO
 ═══════════════════════════════════════════
-Si el cliente responde afirmativamente al cierre (ej: "si", "sí", "quiero comprar", "pídemelo", etc.), debes pasar de inmediato a la toma de datos de envío o pago:
-1. Si aún no tienes su dirección de entrega, solicita en un solo mensaje: "¡Excelente elección! Para programar tu entrega de inmediato, por favor envíame en un solo mensaje: 📍 Ciudad/Distrito, 📍 Dirección exacta y 📍 Referencia de ubicación."
-2. Si ya te proporcionó su dirección de entrega o datos de contacto, envíale la información de pago y pídele la captura: "¡Genial! Puedes realizar el pago mediante Yape, Plin o transferencia bancaria al celular 955252932 (Luis Milla). Una vez realizado, me envías la captura de tu comprobante por aquí para agendar tu entrega. ¡Muchas gracias!"
+Si el cliente responde afirmativamente al cierre (ej: "si", "sí", "quiero comprar", "pídemelo", etc.), debes avanzar de inmediato siguiendo estas reglas estrictas basándote en el HISTORIAL:
+
+1. ¿EL CLIENTE YA ENVIÓ SU DIRECCIÓN O UBICACIÓN EN EL HISTORIAL?
+   - Si NO la ha enviado: Solicita sus datos en un solo mensaje: "¡Excelente elección! Para programar tu entrega de inmediato, por favor envíame en un solo mensaje: 📍 Ciudad/Distrito, 📍 Dirección exacta y 📍 Referencia de ubicación."
+   - Si SÍ la tiene (ej: el cliente ya escribió su calle, distrito o dirección en el historial): NO la vuelvas a pedir. Pasa al paso 2.
+
+2. ¿EL HISTORIAL (BOT:) YA MUESTRA QUE SE LE ENVIARON LOS DATOS DE PAGO (YAPE/PLIN)?
+   - Si el último mensaje de "BOT:" ya contiene las palabras "Yape", "Plin" o el número "955252932": NO repitas la información de pago. Responde textualmente: "¡Perfecto! Quedo super atento al envío de la captura del comprobante por aquí para registrar tu pedido de inmediato. ¡Muchas gracias!"
+   - Si NO se le han enviado los datos de pago en el historial: Envíale las opciones de pago en un solo mensaje: "¡Genial! Puedes realizar el pago mediante Yape, Plin o transferencia bancaria al celular 955252932 (Luis Milla). Una vez realizado, me envías la captura de tu comprobante por aquí para agendar tu entrega. ¡Muchas gracias!"
 
 ═══════════════════════════════════════════
 PROGRAMA DE FIDELIZACIÓN (HERRAMIENTA DE ENGANCHE)
@@ -262,6 +294,13 @@ Cuando el cliente proporcione los 4 datos (nombre completo, DNI, celular, correo
 3. Al FINAL de toda la respuesta, en una línea nueva, insertar la etiqueta de sistema:
 [REGISTRO_DETECTADO:{nombre}|{dni}|{celular}|{correo}]
 Sustituye {nombre}, {dni}, {celular}, {correo} con los datos reales que el cliente proporcionó.
+
+═══════════════════════════════════════════
+🔴 REGLAS CRÍTICAS DE CONTROL Y NO REPETICIÓN (OBLIGATORIO)
+═══════════════════════════════════════════
+1. Si el historial de conversación muestra que el bot (BOT:) ya envió los datos de pago (Yape/Plin/celular 955252932), está ESTRICTAMENTE PROHIBIDO volver a enviar los datos de pago, la cuenta bancaria o repetir el mensaje de Yape.
+2. Si el cliente dice "sí", "sí ahora", "ya lo hago", "ok", "listo" o similar después de recibir los datos de pago, tu única respuesta debe ser: "¡Perfecto! Quedo super atento al envío de la captura del comprobante por aquí para registrar tu pedido de inmediato. ¡Muchas gracias!" (¡NO envíes nada más!).
+3. Si el cliente ya dio su dirección o ubicación en el historial, está ESTRICTAMENTE PROHIBIDO volver a pedirle dirección, distrito o ubicación.
 
 ═══════════════════════════════════════════
 GESTIÓN DE CONVERSACIÓN
@@ -328,24 +367,24 @@ ${userQuestion}`;
   console.warn('[gemini] No API available — using smart KB mock');
   await new Promise((resolve) => setTimeout(resolve, 600));
 
-  const normalize = (s: string) =>
+  const normalizeMock = (s: string) =>
     s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-  const qNorm = normalize(userQuestion).replace(/[¿?¡!.,;:]/g, '').trim();
+  const qNormMock = normalizeMock(userQuestion).replace(/[¿?¡!.,;:]/g, '').trim();
 
   // 1. Detectar respuestas cortas afirmativas/negativas basadas en el historial
-  const positiveWords = ['si', 'sí', 'claro', 'por favor', 'porfavor', 'quiero', 'dale', 'aceptar', 'ok', 'bueno', 'sii', 'siis'];
-  const negativeWords = ['no', 'gracias', 'despues', 'luego', 'cancelar', 'no gracias'];
+  const positiveWordsMock = ['si', 'sí', 'claro', 'por favor', 'porfavor', 'quiero', 'dale', 'aceptar', 'ok', 'bueno', 'sii', 'siis'];
+  const negativeWordsMock = ['no', 'gracias', 'despues', 'luego', 'cancelar', 'no gracias'];
 
-  const isPositive = positiveWords.some(w => qNorm === w);
-  const isNegative = negativeWords.some(w => qNorm === w);
+  const isPositiveMock = positiveWordsMock.some(w => qNormMock === w);
+  const isNegativeMock = negativeWordsMock.some(w => qNormMock === w);
 
-  if ((isPositive || isNegative) && chatHistory.length > 0) {
+  if ((isPositiveMock || isNegativeMock) && chatHistory.length > 0) {
     const lastBotMessage = [...chatHistory].reverse().find(m => m.sender === 'bot' || m.sender === 'agent')?.message || '';
     const lastBotLower = lastBotMessage.toLowerCase();
     
     if (lastBotLower.includes('solicitarlo hoy mismo') || lastBotLower.includes('programar la compra') || lastBotLower.includes('programado el pago')) {
-      if (isPositive) {
+      if (isPositiveMock) {
         return '¡Excelente! Para activar tu cuenta oficial de Cliente Preferente y programar tu entrega necesito los siguientes datos en un solo mensaje:\n\n1️⃣ Nombres y Apellidos completos\n2️⃣ Número de DNI\n3️⃣ Número de Celular\n4️⃣ Correo electrónico';
       } else {
         return 'Entendido. Quedo atento a cuando desees realizar tu pedido o si tienes alguna otra consulta. ¡Que tengas un excelente día! 😊';
@@ -355,7 +394,7 @@ ${userQuestion}`;
 
   // 2. Saludos
   const greetingWords = ['hola', 'buenos dias', 'buenas tardes', 'buenas noches', 'hi', 'hello', 'saludos', 'buen dia', 'hla'];
-  if (greetingWords.some(g => qNorm.split(/\s+/).includes(g))) {
+  if (greetingWords.some(g => qNormMock.split(/\s+/).includes(g))) {
     return '¡Hola! Bienvenido a Fuxion Perú 😊 ¿En qué puedo ayudarte hoy? ¿Buscas algún producto en especial?';
   }
 
@@ -368,7 +407,7 @@ ${userQuestion}`;
     'necesito', 'hola', 'oye', 'mira', 'me', 'te', 'le', 'nos', 'y', 'o', 'un'
   ]);
 
-  const queryWords = qNorm
+  const queryWords = qNormMock
     .split(/\s+/)
     .filter(w => w.length >= 3 && !stopwords.has(w));
 
@@ -388,7 +427,7 @@ ${userQuestion}`;
       .filter((p: string) => p.length > 10);
 
     for (const para of paragraphs) {
-      const paraNorm = normalize(para);
+      const paraNorm = normalizeMock(para);
       const score = queryWords.filter(w => {
         const escapedWord = w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const regex = new RegExp('(?:^|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ])' + escapedWord + '(?:$|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ])', 'i');

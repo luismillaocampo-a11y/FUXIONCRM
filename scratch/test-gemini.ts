@@ -21,37 +21,30 @@ async function test() {
   const { queryKnowledgeBase } = await import('../lib/gemini');
   const { db } = await import('../lib/db');
 
-  const leadId = '51955252932';
-  const historyMessages = await db.getMessages(leadId);
-  const history = historyMessages.slice(-10).map((m: any) => ({
-    sender: m.sender,
-    message: m.message
-  }));
-
-  console.log('Testing Smart Mock paths...\n');
-  
-  // Test case 1: Greeting
-  console.log('--- Test Case 1: Greeting ("hola") ---');
-  const greetingReply = await queryKnowledgeBase('hola', history);
-  console.log('Reply:', greetingReply);
-  console.log();
-
-  // Test case 2: Product query ("prunex")
-  console.log('--- Test Case 2: Product query ("prunex") ---');
-  const productReply = await queryKnowledgeBase('prunex', history);
-  console.log('Reply:', productReply);
-  console.log();
-
-  // Test case 3: Short positive answer ("Si")
-  // We need to inject a history ending with a bot question to test this
-  console.log('--- Test Case 3: Short positive response ("Si") with buying question in history ---');
-  const historyWithQuestion = [
-    { sender: 'customer', message: 'Prunex' },
-    { sender: 'bot', message: 'Excelente, Deseas Programar la Compra?\n\n¿Te gustaría solicitarlo hoy mismo? 😊' }
+  const historyWithPayment = [
+    { sender: 'customer', message: 'quiero comprar prunex' },
+    { sender: 'bot', message: '¡Excelente elección! Para programar tu entrega de inmediato, por favor envíame en un solo mensaje: 📍 Ciudad/Distrito, 📍 Dirección exacta y 📍 Referencia de ubicación.' },
+    { sender: 'customer', message: 'Lima, Santiago de Surco, Av Primavera 123 Dpto 301' },
+    { sender: 'bot', message: '¡Genial! Puedes realizar el pago mediante Yape, Plin o transferencia bancaria al celular 955252932 (Luis Milla). Una vez realizado, me envías la captura de tu comprobante por aquí para agendar tu entrega. ¡Muchas gracias!' }
   ];
-  const confirmationReply = await queryKnowledgeBase('Si', historyWithQuestion);
-  console.log('Reply:', confirmationReply);
+
+  console.log('Testing AI anti-loop for payment confirmation...\n');
+  
+  // Directly import queryKnowledgeBase from gemini.ts and check prompt
+  const kbItems = await db.getKBItems();
+  const contextBlock = "mock fuxion products"; // mock to keep it simple
+
+  const formattedHistory = historyWithPayment
+    .slice(-8)
+    .map((c) => `${c.sender.toUpperCase()}: ${c.message}`)
+    .join('\n');
+
+  console.log('--- FORMATTED HISTORY SEND TO LLM ---');
+  console.log(formattedHistory);
   console.log();
+
+  const antiLoopReply = await queryKnowledgeBase('Si ahora', historyWithPayment);
+  console.log('Reply:', antiLoopReply);
 }
 
 test();
