@@ -578,6 +578,52 @@ class WhatsAppService {
       return couponMsg;
     }
 
+    // --- NODO: CONDICIÓN LÓGICA / LOGIC JUMP ---
+    if (node.type === 'logicJump') {
+      const tagToCheck = node.data.tag || '';
+      const lead = await db.getLeadById(leadId);
+      const leadTags: string[] = lead?.tags || [];
+      const hasTag = leadTags.includes(tagToCheck);
+      
+      const sourceHandle = hasTag ? 'yes' : 'no';
+      const nextEdge = edges.find((e: any) => e.source === node.id && e.sourceHandle === sourceHandle);
+      
+      if (nextEdge) {
+        this.flowState.set(leadId, nextEdge.target);
+        return await this.processFlowNode(leadId, nextEdge.target, nodes, edges, phone, sendMessageFn);
+      }
+      this.flowState.delete(leadId);
+      return null;
+    }
+
+    // --- NODO: PROGRAMAR ENVÍO / DELIVERY ENGINE ---
+    if (node.type === 'deliveryEngine') {
+      const today = new Date();
+      const d24 = new Date(today);
+      d24.setDate(today.getDate() + 1);
+      const d48 = new Date(today);
+      d48.setDate(today.getDate() + 2);
+      
+      const options = { weekday: 'long', day: 'numeric', month: 'long' } as const;
+      const t24 = d24.toLocaleDateString('es-PE', options);
+      const t48 = d48.toLocaleDateString('es-PE', options);
+      
+      const deliveryMsg = `🚚 *Opciones de Entrega Fuxion Flow:*\n\n` +
+        `1. *Entrega Express (24h):* Disponible el *${t24}*\n` +
+        `2. *Entrega Regular (48h):* Disponible el *${t48}*\n\n` +
+        `¿Cuál prefieres para programar tu envío?`;
+      
+      await sendMsg(phone, deliveryMsg);
+      
+      const nextEdge = edges.find((e: any) => e.source === node.id);
+      if (nextEdge) {
+        this.flowState.set(leadId, nextEdge.target);
+      } else {
+        this.flowState.delete(leadId);
+      }
+      return deliveryMsg;
+    }
+
     // --- NODO: CAMBIAR ESTADO / UPDATE STATUS ---
     if (node.type === 'updateStatus') {
       const newStatus = node.data.status || 'Engaged';
