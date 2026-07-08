@@ -30,7 +30,8 @@ export async function GET() {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name || 'Usuario'
+        name: user.name || 'Usuario',
+        avatarUrl: user.avatar_url || ''
       }
     });
   } catch (error: any) {

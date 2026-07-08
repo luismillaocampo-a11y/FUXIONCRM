@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Settings, Key, Mail, Bot, Save, RefreshCw, CheckCircle, AlertTriangle, 
   MessageSquare, ToggleLeft, ToggleRight, Info, ShieldCheck, User, Lock, 
@@ -15,6 +15,8 @@ export default function SettingsPage() {
   const [fetching, setFetching] = useState(true);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Appearance Local Settings (to show change updates in real-time)
   const [selectedMode, setSelectedMode] = useState<'light' | 'dark'>('dark');
@@ -49,12 +51,14 @@ export default function SettingsPage() {
       
       let loggedInName = 'Usuario';
       let loggedInEmail = 'admin@sudominio.com';
+      let loggedInAvatar = '';
       try {
         const meRes = await fetch('/api/auth/me');
         const meData = await meRes.json();
         if (meData.success && meData.user) {
           loggedInName = meData.user.name || 'Usuario';
           loggedInEmail = meData.user.email || 'admin@sudominio.com';
+          loggedInAvatar = meData.user.avatarUrl || '';
         }
       } catch (meErr) {
         console.error('Error fetching auth me profile details:', meErr);
@@ -76,7 +80,7 @@ export default function SettingsPage() {
           admin_email: loggedInEmail,
           ai_enabled: data.configs.ai_enabled || 'true',
           display_name: loggedInName,
-          user_avatar: data.configs.user_avatar || '',
+          user_avatar: loggedInAvatar || data.configs.user_avatar || '',
           appearance_mode: data.configs.appearance_mode || 'dark',
           appearance_accent: data.configs.appearance_accent || 'emerald'
         };
@@ -101,6 +105,44 @@ export default function SettingsPage() {
       ...prev,
       [key]: value
     }));
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    setLoading(true);
+    setSuccessMsg(null);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch('/api/auth/avatar', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success && data.avatarUrl) {
+        setConfigs(prev => ({
+          ...prev,
+          user_avatar: data.avatarUrl
+        }));
+        setSuccessMsg('Foto de perfil actualizada con éxito.');
+        window.setTimeout(() => setSuccessMsg(null), 4000);
+      } else {
+        throw new Error(data.error || 'Error al subir la imagen');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error al conectar con el servidor.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const triggerFileSelect = () => {
+    fileInputRef.current?.click();
   };
 
   const handleAppearanceUpdate = (mode: 'light' | 'dark', accent: 'violet' | 'emerald' | 'cobalt' | 'amber' | 'rose') => {
@@ -285,9 +327,17 @@ export default function SettingsPage() {
                   {/* User Header Block */}
                   <div className="p-6 bg-[#0f111a] border border-[#1e2330] rounded-xl flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="h-12 w-12 rounded-full bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300 font-extrabold text-base">
-                        {configs.display_name.charAt(0)}
-                      </div>
+                      {configs.user_avatar ? (
+                        <img 
+                          src={configs.user_avatar} 
+                          alt="Avatar" 
+                          className="h-12 w-12 rounded-full object-cover border border-[#1e2330]" 
+                        />
+                      ) : (
+                        <div className="h-12 w-12 rounded-full bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300 font-extrabold text-base">
+                          {configs.display_name.charAt(0)}
+                        </div>
+                      )}
                       <div>
                         <h2 className="text-base font-bold text-white">{configs.display_name}</h2>
                         <p className="text-xs text-slate-400">{configs.admin_email || 'admin@sudominio.com'}</p>
@@ -339,12 +389,28 @@ export default function SettingsPage() {
                   <div className="p-6 bg-[#0f111a] border border-[#1e2330] rounded-xl space-y-6">
                     {/* Avatar Upload */}
                     <div className="flex items-center gap-4 pb-6 border-b border-[#1e2330]">
-                      <div className="h-14 w-14 rounded-full bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300 font-extrabold text-lg">
-                        {configs.display_name.charAt(0)}
-                      </div>
+                      {configs.user_avatar ? (
+                        <img 
+                          src={configs.user_avatar} 
+                          alt="Avatar" 
+                          className="h-14 w-14 rounded-full object-cover border border-[#1e2330]" 
+                        />
+                      ) : (
+                        <div className="h-14 w-14 rounded-full bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300 font-extrabold text-lg">
+                          {configs.display_name.charAt(0)}
+                        </div>
+                      )}
                       <div className="space-y-1">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleAvatarChange}
+                          accept="image/*"
+                          className="hidden"
+                        />
                         <button 
                           type="button"
+                          onClick={triggerFileSelect}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-[#161922] border border-[#2a3040] rounded-lg text-xs font-semibold text-white hover:bg-[#1f2431] transition cursor-pointer"
                         >
                           <Upload size={13} />

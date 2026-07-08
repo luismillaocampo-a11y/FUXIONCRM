@@ -183,10 +183,14 @@ function getSqliteDb() {
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       name TEXT DEFAULT '',
+      avatar_url TEXT DEFAULT '',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );`);
     try {
       sqliteDb.exec('ALTER TABLE users ADD COLUMN name TEXT DEFAULT "";');
+    } catch (e) {}
+    try {
+      sqliteDb.exec('ALTER TABLE users ADD COLUMN avatar_url TEXT DEFAULT "";');
     } catch (e) {}
 
 
@@ -1489,6 +1493,19 @@ export const db = {
       VALUES (?, ?, ?, ?)
     `).run(user.id, user.email, user.passwordHash, fullName);
     return this.getUserByEmail(user.email);
+  },
+
+  async updateUserAvatar(email: string, avatarUrl: string): Promise<any> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('users').update({
+        avatar_url: avatarUrl
+      }).eq('email', email).select().maybeSingle());
+      if (res && !res.error) return res.data;
+    }
+
+    const db = getSqliteDb();
+    db.prepare('UPDATE users SET avatar_url = ? WHERE email = ?').run(avatarUrl, email);
+    return this.getUserByEmail(email);
   },
 
   async getUserByEmail(email: string): Promise<any> {

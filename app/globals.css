@@ -53,12 +53,12 @@
 
 /* Light Mode Theme */
 .light {
-  --background: #d8ffff; /* Soft fresh light cyan-blue recommended background */
+  --background: #c3ebeb; /* Soft fresh light cyan-blue recommended background, slightly darker and muted */
   --foreground: #0f172a; /* Dark slate text */
   --card: #ffffff; /* Clean white card */
-  --card-border: #bfe3e3; /* Soft border color */
-  --border: #bfe3e3;
-  --input: #f0fdfd;
+  --card-border: #aacbcb; /* Soft border color */
+  --border: #aacbcb;
+  --input: #f4fbfb;
 }
 
 .light body {
@@ -69,18 +69,20 @@
 /* Override dark background classes in Light Mode */
 .light .bg-\[\#07090e\], 
 .light .bg-\[\#090b11\], 
+.light .bg-\[\#090b12\],
 .light .bg-\[\#0a0c13\], 
 .light .bg-\[\#0c0e17\], 
 .light .bg-\[\#0c0f1d\],
 .light .bg-slate-900,
 .light .bg-slate-950,
+.light .bg-slate-950\/40,
 .light .bg-\[\#07090e\/50\],
 .light main {
   background-color: var(--background) !important;
 }
 
 .light aside {
-  background-color: #e0fafa !important;
+  background-color: #b1dfdf !important;
   border-right: 1px solid var(--card-border) !important;
 }
 
@@ -96,6 +98,13 @@
   background-color: var(--card) !important;
   color: var(--foreground) !important;
   border-color: var(--card-border) !important;
+}
+
+/* Selected active card highlights in Light Mode */
+.light .bg-\[\#181d2f\] {
+  background-color: color-mix(in srgb, var(--primary) 12%, #ffffff) !important;
+  border-color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
 /* Inputs in Light Mode */
