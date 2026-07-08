@@ -88,6 +88,13 @@
 
 /* Override dark card classes in Light Mode */
 .light .bg-\[\#0f111a\],
+.light .bg-slate-950,
+.light .bg-slate-950\/80,
+.light .bg-slate-950\/60,
+.light .bg-slate-900,
+.light .bg-slate-900\/80,
+.light .bg-slate-900\/70,
+.light .bg-slate-900\/90,
 .light .bg-slate-900\/40,
 .light .bg-slate-950\/20,
 .light .bg-\[\#161922\],
@@ -97,6 +104,18 @@
 .light .react-flow__node {
   background-color: var(--card) !important;
   color: var(--foreground) !important;
+  border-color: var(--card-border) !important;
+}
+
+/* Border overrides in Light Mode */
+.light .border-\[\#1e2330\],
+.light .border-\[\#2a3040\],
+.light .border-slate-800,
+.light .border-slate-800\/80,
+.light .border-slate-850,
+.light .border-b,
+.light .border-r,
+.light .border-dashed {
   border-color: var(--card-border) !important;
 }
 
@@ -116,15 +135,6 @@
   border-color: var(--card-border) !important;
 }
 
-/* Border overrides in Light Mode */
-.light .border-\[\#1e2330\],
-.light .border-\[\#2a3040\],
-.light .border-slate-800,
-.light .border-slate-850,
-.light .border-b,
-.light .border-r {
-  border-color: var(--card-border) !important;
-}
 
 /* Text color fixes in Light Mode */
 .light .text-slate-100,
