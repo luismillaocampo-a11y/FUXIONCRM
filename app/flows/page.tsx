@@ -302,6 +302,22 @@ function ControlledTextArea({
 
 function FlowBuilder() {
   const { getViewport } = useReactFlow();
+
+  // Muted Light Mode state observer
+  const [isLightMode, setIsLightMode] = useState(false);
+
+  useEffect(() => {
+    const checkTheme = () => {
+      const isL = document.documentElement.classList.contains('light');
+      setIsLightMode(isL);
+    };
+    checkTheme();
+    
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   // Lista de flujos
   const [flows, setFlows] = useState<any[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string>('');
@@ -1071,7 +1087,7 @@ function FlowBuilder() {
             nodeTypes={nodeTypes}
             deleteKeyCode={['Delete', 'Backspace']}
             fitView
-            colorMode="dark"
+            colorMode={isLightMode ? 'light' : 'dark'}
           >
             <Controls
               style={{
@@ -1101,7 +1117,7 @@ function FlowBuilder() {
               maskColor="rgba(0, 0, 0, 0.6)"
               nodeComponent={CustomMiniMapNode}
             />
-            <Background color="#334155" gap={16} size={1} />
+            <Background color={isLightMode ? '#9cc6c6' : '#334155'} gap={16} size={1} />
 
             {/* Panel de Elementos a Agregar */}
             <Panel position="top-left" className="bg-[#0c0f1d]/90 border border-slate-800 p-4 rounded-xl shadow-2xl flex flex-col gap-2.5 z-10 w-52 backdrop-blur">

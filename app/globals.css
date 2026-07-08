@@ -156,6 +156,15 @@
   color: #64748b !important;
 }
 
+/* Light mode canvas overrides for flows builder */
+.light .xy-flow,
+.light .react-flow,
+.light .react-flow__renderer,
+.light .react-flow__viewport,
+.light .react-flow__background {
+  background-color: var(--background) !important;
+}
+
 /* Custom CSS overrides to map Tailwind hardcoded emerald styles dynamically */
 .text-emerald-300, .text-emerald-400, .text-emerald-500, .text-emerald-600, .text-emerald-700 {
   color: var(--primary) !important;
