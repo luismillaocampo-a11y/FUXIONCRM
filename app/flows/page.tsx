@@ -814,69 +814,69 @@ function FlowBuilder() {
       );
     }
 
-    let bg = '#0f172a';
-    let stroke = '#1e293b';
+    let bg = isLightMode ? '#ffffff' : '#0f172a';
+    let stroke = isLightMode ? '#aacbcb' : '#1e293b';
     let icon = '';
     let title = '';
 
     switch (node.type) {
       case 'trigger':
-        bg = '#1e1515';
-        stroke = 'rgba(249, 115, 22, 0.4)';
+        bg = isLightMode ? '#fff7ed' : '#1e1515';
+        stroke = isLightMode ? '#f97316' : 'rgba(249, 115, 22, 0.4)';
         icon = '⚡';
         title = 'Disparador';
         break;
       case 'message':
-        bg = '#11192a';
-        stroke = 'rgba(59, 130, 246, 0.4)';
+        bg = isLightMode ? '#eff6ff' : '#11192a';
+        stroke = isLightMode ? '#3b82f6' : 'rgba(59, 130, 246, 0.4)';
         icon = '💬';
         title = 'Mensaje';
         break;
       case 'buttons':
-        bg = '#11241a';
-        stroke = 'rgba(16, 185, 129, 0.4)';
+        bg = isLightMode ? '#f0fdf4' : '#11241a';
+        stroke = isLightMode ? '#10b981' : 'rgba(16, 185, 129, 0.4)';
         icon = '🔘';
         title = 'Botones';
         break;
       case 'logicJump':
-        bg = '#1e132c';
-        stroke = 'rgba(168, 85, 247, 0.4)';
+        bg = isLightMode ? '#faf5ff' : '#1e132c';
+        stroke = isLightMode ? '#a855f7' : 'rgba(168, 85, 247, 0.4)';
         icon = '🔀';
         title = 'Condición';
         break;
       case 'deliveryEngine':
-        bg = '#242111';
-        stroke = 'rgba(234, 179, 8, 0.4)';
+        bg = isLightMode ? '#fefce8' : '#242111';
+        stroke = isLightMode ? '#eab308' : 'rgba(234, 179, 8, 0.4)';
         icon = '🚚';
         title = 'Envío';
         break;
       case 'waitDelay':
-        bg = '#2a1b11';
-        stroke = 'rgba(217, 119, 6, 0.4)';
+        bg = isLightMode ? '#fffbeb' : '#2a1b11';
+        stroke = isLightMode ? '#f59e0b' : 'rgba(217, 119, 6, 0.4)';
         icon = '⏳';
         title = 'Esperar';
         break;
       case 'coupon':
-        bg = '#241118';
-        stroke = 'rgba(244, 63, 94, 0.4)';
+        bg = isLightMode ? '#fff1f2' : '#241118';
+        stroke = isLightMode ? '#f43f5e' : 'rgba(244, 63, 94, 0.4)';
         icon = '🎁';
         title = 'Cupón';
         break;
       case 'updateStatus':
-        bg = '#111c2a';
-        stroke = 'rgba(6, 182, 212, 0.4)';
+        bg = isLightMode ? '#f0f9ff' : '#111c2a';
+        stroke = isLightMode ? '#06b6d4' : 'rgba(6, 182, 212, 0.4)';
         icon = '📊';
         title = 'Estado';
         break;
       case 'alertAgent':
-        bg = '#241111';
-        stroke = 'rgba(239, 68, 68, 0.4)';
+        bg = isLightMode ? '#fef2f2' : '#241111';
+        stroke = isLightMode ? '#ef4444' : 'rgba(239, 68, 68, 0.4)';
         icon = '🔔';
         title = 'Alerta';
         break;
     }
 
-    const strokeColor = selected ? stroke.replace('0.4', '1') : stroke;
+    const strokeColor = selected ? (isLightMode ? stroke : stroke.replace('0.4', '1')) : stroke;
     const strokeWidth = selected ? 2.5 : 1.5;
 
     return (
@@ -1091,30 +1091,30 @@ function FlowBuilder() {
           >
             <Controls
               style={{
-                backgroundColor: '#0f172a',
-                border: '1px solid #1e293b',
+                backgroundColor: isLightMode ? '#ffffff' : '#0f172a',
+                border: isLightMode ? '1px solid #aacbcb' : '1px solid #1e293b',
                 borderRadius: '8px',
-                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)',
+                boxShadow: isLightMode ? '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05)' : '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)',
                 padding: '4px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '4px',
-                ['--xy-controls-button-background' as any]: '#0f172a',
-                ['--xy-controls-button-background-hover' as any]: '#1e293b',
-                ['--xy-controls-button-color' as any]: '#94a3b8',
-                ['--xy-controls-button-color-hover' as any]: '#f8fafc',
+                ['--xy-controls-button-background' as any]: isLightMode ? '#ffffff' : '#0f172a',
+                ['--xy-controls-button-background-hover' as any]: isLightMode ? '#f1f5f9' : '#1e293b',
+                ['--xy-controls-button-color' as any]: isLightMode ? '#475569' : '#94a3b8',
+                ['--xy-controls-button-color-hover' as any]: isLightMode ? '#0f172a' : '#f8fafc',
                 ['--xy-controls-border-color' as any]: 'transparent',
               }}
             />
             <MiniMap
               style={{
-                backgroundColor: '#0f172a',
-                border: '1px solid #1e293b',
+                backgroundColor: isLightMode ? '#ffffff' : '#0f172a',
+                border: isLightMode ? '1px solid #aacbcb' : '1px solid #1e293b',
                 borderRadius: '8px',
-                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)',
+                boxShadow: isLightMode ? '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05)' : '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)',
               }}
               nodeColor={() => '#f59e0b'}
-              maskColor="rgba(0, 0, 0, 0.6)"
+              maskColor={isLightMode ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.6)'}
               nodeComponent={CustomMiniMapNode}
             />
             <Background color={isLightMode ? '#9cc6c6' : '#334155'} gap={16} size={1} />
