@@ -313,7 +313,7 @@ function FlowBuilder() {
 
   // Configuración del Elemento seleccionado
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
-  const [flowName, setFlowName] = useState('Flujo de Ventas Fuxion Flow');
+  const [flowName, setFlowName] = useState('Flujo de Ventas FUXION CRM');
   const [saveLoading, setSaveLoading] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const messageTextareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -527,7 +527,7 @@ function FlowBuilder() {
   const handleCreateNewFlow = () => {
     const id = `flow-${Date.now()}`;
     setActiveFlowId(id);
-    setFlowName('Flujo de Ventas Fuxion Flow');
+    setFlowName('Flujo de Ventas FUXION CRM');
     setNodes([
       { id: '1', type: 'trigger', position: { x: 250, y: 50 }, data: { label: 'Disparador Iniciar', keyword: 'hola, empezar' } }
     ]);

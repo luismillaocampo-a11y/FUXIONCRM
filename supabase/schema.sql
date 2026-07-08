@@ -67,3 +67,50 @@ CREATE TABLE IF NOT EXISTS whatsapp_sessions (
     keys JSONB,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Lead Notes Table
+CREATE TABLE IF NOT EXISTS lead_notes (
+    id TEXT PRIMARY KEY,
+    lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Reminders Table
+CREATE TABLE IF NOT EXISTS reminders (
+    id TEXT PRIMARY KEY,
+    lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    scheduled_at TIMESTAMP NOT NULL,
+    sent INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- System Settings Table
+CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Broadcasts Table
+CREATE TABLE IF NOT EXISTS broadcasts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    message TEXT NOT NULL,
+    targets JSONB,
+    status TEXT NOT NULL DEFAULT 'pending',
+    sent_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Users Table (for Authentication)
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+

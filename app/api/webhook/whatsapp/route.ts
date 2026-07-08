@@ -4,6 +4,7 @@ import { queryKnowledgeBase } from '@/lib/gemini';
 import { alertKnowledgeGap, alertPaymentVerification, alertRegistration } from '@/lib/notifications';
 import { whatsappService } from '@/lib/whatsapp-service';
 import { db } from '@/lib/db';
+import { sendWhatsAppMessageDynamic } from '@/lib/whatsapp-sender';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,44 +133,7 @@ function hasActiveIAConversation(messages: any[], activeFlows: any[]): boolean {
  * Prioritizes Evolution API if configured, otherwise falls back to local Baileys service.
  */
 async function sendWhatsAppMessage(phone: string, text: string) {
-  const url = process.env.EVOLUTION_API_URL;
-  const apiKey = process.env.EVOLUTION_API_KEY;
-  const instance = process.env.EVOLUTION_API_INSTANCE;
-
-  if (!url || !apiKey || !instance) {
-    console.warn('[webhook/whatsapp] Evolution API config missing. Falling back to local whatsappService (Baileys).');
-    await whatsappService.sendMessageToPhone(phone, text);
-    return;
-  }
-
-  const cleanPhone = phone.replace(/\D/g, '');
-  const endpoint = `${url.replace(/\/$/, '')}/message/sendText/${instance}`;
-
-  const payload = {
-    number: cleanPhone,
-    text: text
-  };
-
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': apiKey
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[webhook/whatsapp] Evolution API returned error: ${response.status} - ${errorText}`);
-      throw new Error(`Evolution API send failed: ${response.status}`);
-    }
-    console.log(`[webhook/whatsapp] Sent message to ${cleanPhone} via Evolution API`);
-  } catch (err) {
-    console.error('[webhook/whatsapp] Failed to send message via Evolution API, attempting Baileys fallback...', err);
-    await whatsappService.sendMessageToPhone(phone, text);
-  }
+  await sendWhatsAppMessageDynamic(phone, text);
 }
 
 /**
@@ -595,10 +559,14 @@ export async function POST(request: Request) {
       await db.updateLeadBotActive(activeLead.id, false);
       await db.updateLeadStatus(activeLead.id, 'Por Registrar en Web');
 
-      // Determine CRM base URL for the link in admin alert
-      const crmBase = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000';
+      // Determine CRM base URL dynamically from request.url
+      let crmBase = 'http://localhost:3000';
+      try {
+        const reqUrl = new URL(request.url);
+        crmBase = reqUrl.origin;
+      } catch (e) {
+        crmBase = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      }
 
       // Fire admin WhatsApp alert with client data
       await alertRegistration({

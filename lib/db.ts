@@ -156,6 +156,38 @@ function getSqliteDb() {
     );`);
   } catch (e) {}
 
+  try {
+    sqliteDb.exec(`CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );`);
+  } catch (e) {}
+
+  try {
+    sqliteDb.exec(`CREATE TABLE IF NOT EXISTS broadcasts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      targets TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      sent_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );`);
+  } catch (e) {}
+
+  try {
+    sqliteDb.exec(`CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );`);
+  } catch (e) {}
+
+
   // Insert default flows if empty
   const flowCount = sqliteDb.prepare('SELECT count(*) as count FROM flows').get() as { count: number };
   if (flowCount.count === 0) {
@@ -1345,5 +1377,125 @@ export const db = {
     const converted = leads.filter((l: any) => l.status === 'Converted').length;
     const conversionRate = total > 0 ? Math.round((converted / total) * 100) : 0;
     return { total, newToday, inNegotiation, converted, conversionRate };
+  },
+
+  async getSystemSetting(key: string): Promise<string | null> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('system_settings').select('value').eq('key', key).maybeSingle());
+      if (res && !res.error && res.data) return res.data.value;
+    }
+    const db = getSqliteDb();
+    const row = db.prepare('SELECT value FROM system_settings WHERE key = ?').get(key) as any;
+    return row ? row.value : null;
+  },
+
+  async setSystemSetting(key: string, value: string): Promise<void> {
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('system_settings').upsert({
+        key,
+        value,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'key' }));
+    }
+    const db = getSqliteDb();
+    db.prepare(`
+      INSERT INTO system_settings (key, value)
+      VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(key, value);
+  },
+
+  async getBroadcasts(): Promise<any[]> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('broadcasts').select('*').order('created_at', { ascending: false }));
+      if (res && !res.error) return res.data || [];
+    }
+    const db = getSqliteDb();
+    const rows = db.prepare('SELECT * FROM broadcasts ORDER BY created_at DESC').all();
+    return rows.map((r: any) => ({
+      ...r,
+      targets: JSON.parse(r.targets)
+    }));
+  },
+
+  async getBroadcastById(id: string): Promise<any> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('broadcasts').select('*').eq('id', id).maybeSingle());
+      if (res && !res.error) return res.data;
+    }
+    const db = getSqliteDb();
+    const row = db.prepare('SELECT * FROM broadcasts WHERE id = ?').get(id) as any;
+    if (!row) return null;
+    return {
+      ...row,
+      targets: JSON.parse(row.targets)
+    };
+  },
+
+  async saveBroadcast(broadcast: { id: string; name: string; message: string; targets: string[]; status: string; sent_count?: number; failed_count?: number }): Promise<any> {
+    const targetsStr = JSON.stringify(broadcast.targets);
+    const sentCount = broadcast.sent_count ?? 0;
+    const failedCount = broadcast.failed_count ?? 0;
+
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('broadcasts').upsert({
+        id: broadcast.id,
+        name: broadcast.name,
+        message: broadcast.message,
+        targets: broadcast.targets,
+        status: broadcast.status,
+        sent_count: sentCount,
+        failed_count: failedCount,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' }).select().single());
+      if (res && !res.error) return res.data;
+    }
+
+    const db = getSqliteDb();
+    db.prepare(`
+      INSERT INTO broadcasts (id, name, message, targets, status, sent_count, failed_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        message = excluded.message,
+        targets = excluded.targets,
+        status = excluded.status,
+        sent_count = excluded.sent_count,
+        failed_count = excluded.failed_count,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(broadcast.id, broadcast.name, broadcast.message, targetsStr, broadcast.status, sentCount, failedCount);
+    return this.getBroadcastById(broadcast.id);
+  },
+
+  async createUser(user: { id: string; email: string; passwordHash: string }): Promise<any> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('users').insert({
+        id: user.id,
+        email: user.email,
+        password: user.passwordHash
+      }).select().single());
+      if (res && !res.error) return res.data;
+    }
+
+    const db = getSqliteDb();
+    db.prepare(`
+      INSERT INTO users (id, email, password)
+      VALUES (?, ?, ?)
+    `).run(user.id, user.email, user.passwordHash);
+    return this.getUserByEmail(user.email);
+  },
+
+  async getUserByEmail(email: string): Promise<any> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('users').select('*').eq('email', email).maybeSingle());
+      if (res && !res.error) return res.data;
+    }
+
+    const db = getSqliteDb();
+    const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+    return row || null;
   }
 };
+

@@ -2,11 +2,29 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { db } from './db';
 import Groq from 'groq-sdk';
 
-const apiKey = process.env.GEMINI_API_KEY || '';
-const hasApiKey = Boolean(apiKey);
+async function getGeminiClient(): Promise<{ genAI: GoogleGenerativeAI | null; hasApiKey: boolean }> {
+  try {
+    const dbKey = await db.getSystemSetting('gemini_api_key');
+    if (dbKey && dbKey.trim().length > 0) {
+      return {
+        genAI: new GoogleGenerativeAI(dbKey.trim()),
+        hasApiKey: true
+      };
+    }
+  } catch (err) {
+    console.error('Error fetching gemini_api_key from DB:', err);
+  }
 
-// Initialize Gemini SDK if API key is present
-const genAI = hasApiKey ? new GoogleGenerativeAI(apiKey) : null;
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  if (apiKey && apiKey.trim().length > 0) {
+    return {
+      genAI: new GoogleGenerativeAI(apiKey.trim()),
+      hasApiKey: true
+    };
+  }
+
+  return { genAI: null, hasApiKey: false };
+}
 
 let groqClient: any = null;
 let hasGroqKey = false;
@@ -28,6 +46,7 @@ export async function analyzeMultimediaFile(
   fileType: string,
   fileBuffer: Buffer
 ): Promise<{ content: string; summary: string }> {
+  const { genAI, hasApiKey } = await getGeminiClient();
   if (hasApiKey && genAI) {
     try {
       const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
@@ -320,6 +339,7 @@ NUEVO MENSAJE DEL CLIENTE:
 ${userQuestion}`;
 
   // ─── Priority 1: Gemini (primary engine) ────────────────────────────────────
+  const { genAI, hasApiKey } = await getGeminiClient();
   if (hasApiKey && genAI) {
     try {
       const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });

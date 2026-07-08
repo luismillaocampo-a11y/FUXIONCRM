@@ -3,7 +3,7 @@ import './globals.css';
 import Sidebar from '@/components/Sidebar';
 
 export const metadata: Metadata = {
-  title: 'Fuxion Flow CRM - Automatización de Ventas y Gestión de Clientes',
+  title: 'FUXION CRM',
   description: 'Creador de flujos visual con IA, biblioteca multimedia de auto-aprendizaje y alertas automáticas de verificación de pago.',
 };
 

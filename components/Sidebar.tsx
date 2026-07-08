@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, GitFork, MessageSquare, Activity,
-  Bot, BotOff, AlertTriangle, CheckCircle2, Loader2
+  Bot, BotOff, AlertTriangle, CheckCircle2, Loader2, Megaphone, Settings, LogOut
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -21,7 +21,9 @@ export default function Sidebar() {
   const links = [
     { href: '/', label: 'Panel de Clientes', icon: LayoutDashboard },
     { href: '/flows', label: 'Creador de Flujos', icon: GitFork },
-    { href: '/whatsapp', label: 'Conexión WhatsApp', icon: MessageSquare }
+    { href: '/broadcast', label: 'Mensajes Masivos', icon: Megaphone },
+    { href: '/whatsapp', label: 'Conexión WhatsApp', icon: MessageSquare },
+    { href: '/settings', label: 'Configuración API', icon: Settings }
   ];
 
   // Fetch global AI setting and manual leads count
@@ -73,6 +75,17 @@ export default function Sidebar() {
       console.error('[Sidebar] Error toggling AI:', err);
     } finally {
       setToggling(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (res.ok) {
+        window.location.href = '/login';
+      }
+    } catch (err) {
+      console.error('[Sidebar] Error logging out:', err);
     }
   };
 
@@ -208,6 +221,16 @@ export default function Sidebar() {
               {aiEnabled ? 'ON' : 'OFF'}
             </span>
           )}
+        </button>
+
+        {/* Botón Cerrar Sesión */}
+        <button
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3.5 px-4 py-3 rounded-2xl text-xs font-bold transition-all text-rose-450 hover:bg-rose-500/10 hover:text-rose-300 border border-transparent hover:border-rose-500/15 active:scale-95 cursor-pointer mt-2"
+          aria-label="Cerrar sesión"
+        >
+          <LogOut className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="flex-1 text-left leading-tight">Cerrar Sesión</span>
         </button>
       </div>
     </aside>
