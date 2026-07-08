@@ -156,6 +156,85 @@
   color: #64748b !important;
 }
 
+/* Light Mode Card and Tab Overrides */
+.light .bg-slate-800,
+.light .bg-slate-800\/60,
+.light .bg-slate-700,
+.light .bg-slate-900,
+.light .from-\[\#0c0f1d\]\/90 {
+  background-image: none !important;
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+  border-color: var(--card-border) !important;
+}
+.light .bg-slate-800:hover,
+.light .bg-slate-800\/60:hover,
+.light .bg-slate-700:hover,
+.light .bg-slate-900:hover {
+  background-color: var(--background) !important;
+}
+
+/* Dynamic Node Themes inside Light Mode */
+.light .bg-\[\#1e1515\] { background-color: #fff7ed !important; color: #0f172a !important; border-color: #ff9800 !important; }
+.light .bg-\[\#11192a\] { background-color: #eff6ff !important; color: #0f172a !important; border-color: #3b82f6 !important; }
+.light .bg-\[\#11241a\] { background-color: #f0fdf4 !important; color: #0f172a !important; border-color: #10b981 !important; }
+.light .bg-\[\#1e132c\] { background-color: #faf5ff !important; color: #0f172a !important; border-color: #a855f7 !important; }
+.light .bg-\[\#242111\] { background-color: #fefce8 !important; color: #0f172a !important; border-color: #eab308 !important; }
+.light .bg-\[\#2a1b11\] { background-color: #fffbeb !important; color: #0f172a !important; border-color: #f59e0b !important; }
+.light .bg-\[\#241118\] { background-color: #fff1f2 !important; color: #0f172a !important; border-color: #f43f5e !important; }
+.light .bg-\[\#111c2a\] { background-color: #f0f9ff !important; color: #0f172a !important; border-color: #06b6d4 !important; }
+.light .bg-\[\#241111\] { background-color: #fef2f2 !important; color: #0f172a !important; border-color: #ef4444 !important; }
+
+/* Dynamic Node borders inside Light Mode */
+.light .border-orange-500\/40 { border-color: #f97316 !important; }
+.light .border-blue-500\/40 { border-color: #3b82f6 !important; }
+.light .border-emerald-500\/40 { border-color: #10b981 !important; }
+.light .border-purple-500\/40 { border-color: #a855f7 !important; }
+.light .border-yellow-500\/40 { border-color: #eab308 !important; }
+.light .border-amber-600\/40 { border-color: #f59e0b !important; }
+.light .border-rose-500\/40 { border-color: #f43f5e !important; }
+.light .border-cyan-500\/40 { border-color: #06b6d4 !important; }
+.light .border-red-500\/40 { border-color: #ef4444 !important; }
+
+/* Keep text color dark inside custom nodes in Light Mode */
+.light .react-flow__node div,
+.light .react-flow__node p,
+.light .react-flow__node span {
+  color: #0f172a !important;
+}
+
+/* For labels in Trigger/Message Node headers */
+.light .text-orange-400 { color: #d97706 !important; }
+.light .text-blue-400 { color: #2563eb !important; }
+.light .text-emerald-400 { color: #059669 !important; }
+.light .text-purple-400 { color: #7c3aed !important; }
+.light .text-yellow-400 { color: #ca8a04 !important; }
+.light .text-amber-500 { color: #d97706 !important; }
+.light .text-rose-400 { color: #e11d48 !important; }
+.light .text-cyan-400 { color: #0891b2 !important; }
+.light .text-red-400 { color: #dc2626 !important; }
+
+/* In-node pre/code details box backgrounds */
+.light .bg-slate-950\/60,
+.light .bg-slate-900\/60 {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  color: #0f172a !important;
+  border-color: #aacbcb !important;
+}
+
+/* Sidebar floats adding panel */
+.light .bg-\[\#0c0f1d\]\/90 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: var(--card-border) !important;
+}
+.light .bg-\[\#0c0f1d\]\/90 h4 {
+  color: #64748b !important;
+}
+.light .bg-orange-500\/5 { background-color: rgba(249, 115, 22, 0.08) !important; }
+.light .bg-blue-500\/5 { background-color: rgba(59, 130, 246, 0.08) !important; }
+.light .bg-emerald-500\/5 { background-color: rgba(16, 185, 129, 0.08) !important; }
+.light .bg-purple-500\/5 { background-color: rgba(168, 85, 247, 0.08) !important; }
+
 /* Light mode canvas overrides for flows builder */
 .light .xy-flow,
 .light .react-flow,
