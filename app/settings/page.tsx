@@ -46,6 +46,20 @@ export default function SettingsPage() {
     try {
       const res = await fetch('/api/settings/configs');
       const data = await res.json();
+      
+      let loggedInName = 'Usuario';
+      let loggedInEmail = 'admin@sudominio.com';
+      try {
+        const meRes = await fetch('/api/auth/me');
+        const meData = await meRes.json();
+        if (meData.success && meData.user) {
+          loggedInName = meData.user.name || 'Usuario';
+          loggedInEmail = meData.user.email || 'admin@sudominio.com';
+        }
+      } catch (meErr) {
+        console.error('Error fetching auth me profile details:', meErr);
+      }
+
       if (data.success && data.configs) {
         const loadedConfigs = {
           whatsapp_api_url: data.configs.whatsapp_api_url || '',
@@ -59,9 +73,9 @@ export default function SettingsPage() {
           smtp_user: data.configs.smtp_user || '',
           smtp_pass: data.configs.smtp_pass || '',
           smtp_from: data.configs.smtp_from || '',
-          admin_email: data.configs.admin_email || '',
+          admin_email: loggedInEmail,
           ai_enabled: data.configs.ai_enabled || 'true',
-          display_name: data.configs.display_name || 'Andy Cruz',
+          display_name: loggedInName,
           user_avatar: data.configs.user_avatar || '',
           appearance_mode: data.configs.appearance_mode || 'dark',
           appearance_accent: data.configs.appearance_accent || 'emerald'
@@ -114,6 +128,8 @@ export default function SettingsPage() {
       const data = await res.json();
       if (data.success) {
         setSuccessMsg('Configuraciones guardadas y aplicadas con éxito.');
+        // Apply theme color immediately to browser HTML node
+        document.documentElement.className = `h-full bg-[#090b11] theme-${configs.appearance_accent} ${configs.appearance_mode}`;
         window.setTimeout(() => setSuccessMsg(null), 5000);
       } else {
         throw new Error(data.error || 'Error al guardar');

@@ -5,7 +5,7 @@
   --foreground: #f4f4f5;
   --card: #111420;
   --card-border: #1f293d;
-  --primary: #10b981; /* WhatsApp Emerald */
+  --primary: #10b981; /* Default Emerald */
   --primary-hover: #059669;
   --secondary: #0ea5e9; /* Tech Cyan */
   --secondary-hover: #0284c7;
@@ -15,6 +15,71 @@
   --border: #1e293b;
   --input: #0f172a;
 }
+
+/* Violet Theme */
+.theme-violet {
+  --primary: #8b5cf6;
+  --primary-hover: #7c3aed;
+  --accent: #10b981;
+}
+
+/* Emerald Theme */
+.theme-emerald {
+  --primary: #10b981;
+  --primary-hover: #059669;
+  --accent: #8b5cf6;
+}
+
+/* Cobalt Theme */
+.theme-cobalt {
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --accent: #8b5cf6;
+}
+
+/* Amber Theme */
+.theme-amber {
+  --primary: #f59e0b;
+  --primary-hover: #d97706;
+  --accent: #8b5cf6;
+}
+
+/* Rose Theme */
+.theme-rose {
+  --primary: #f43f5e;
+  --primary-hover: #e11d48;
+  --accent: #8b5cf6;
+}
+
+/* Custom CSS overrides to map Tailwind hardcoded emerald styles dynamically */
+.text-emerald-400, .text-emerald-500 {
+  color: var(--primary) !important;
+}
+.bg-emerald-500, .bg-emerald-600 {
+  background-color: var(--primary) !important;
+}
+.bg-emerald-500\/10 {
+  background-color: color-mix(in srgb, var(--primary) 10%, transparent) !important;
+}
+.border-emerald-500\/20 {
+  border-color: color-mix(in srgb, var(--primary) 20%, transparent) !important;
+}
+.border-emerald-500\/15 {
+  border-color: color-mix(in srgb, var(--primary) 15%, transparent) !important;
+}
+.hover\:bg-emerald-600:hover {
+  background-color: var(--primary-hover) !important;
+}
+.shadow-emerald-500\/10 {
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--primary) 10%, transparent) !important;
+}
+.shadow-emerald-500\/20 {
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--primary) 20%, transparent) !important;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--primary) !important;
+}
+
 
 body {
   background-color: var(--background);

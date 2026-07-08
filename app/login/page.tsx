@@ -5,6 +5,7 @@ import { Mail, Lock, Bot, ArrowRight, UserPlus, ShieldAlert, CheckCircle, Loader
 
 export default function LoginPage() {
   const [isRegistering, setIsRegistering] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -31,7 +32,7 @@ export default function LoginPage() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, name })
       });
       const data = await res.json();
 
@@ -39,6 +40,7 @@ export default function LoginPage() {
         if (isRegistering) {
           setSuccessMsg('¡Usuario registrado! Ya puedes iniciar sesión.');
           setIsRegistering(false);
+          setName('');
           setPassword('');
           setConfirmPassword('');
         } else {
@@ -99,6 +101,23 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             
+            {/* Nombre Completo (Solo en registro) */}
+            {isRegistering && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-300 block">Nombre Completo</label>
+                <div className="relative">
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Escribe tu nombre"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-4 py-3 bg-[#161922] border border-[#2a3040] rounded-xl text-xs text-slate-200 placeholder-slate-550 focus:outline-none focus:border-indigo-500 transition focus:ring-1 focus:ring-indigo-500/30"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Correo */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-300 block">Email</label>

@@ -1,19 +1,23 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
+import { db } from '@/lib/db';
 
 export const metadata: Metadata = {
   title: 'FUXION CRM',
   description: 'Creador de flujos visual con IA, biblioteca multimedia de auto-aprendizaje y alertas automáticas de verificación de pago.',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const accent = await db.getSystemSetting('appearance_accent') || 'emerald';
+  const mode = await db.getSystemSetting('appearance_mode') || 'dark';
+
   return (
-    <html lang="en" className="h-full bg-[#090b11]">
+    <html lang="en" className={`h-full bg-[#090b11] theme-${accent} ${mode}`}>
       <body className="h-full flex overflow-hidden antialiased text-slate-100 select-none">
         <div className="flex h-full w-full">
           {/* Dashboard Sidebar */}

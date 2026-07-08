@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const { email, password, name } = body;
 
     if (!email || !password || !email.includes('@') || password.length < 6) {
       return NextResponse.json(
@@ -35,7 +35,8 @@ export async function POST(request: Request) {
     await db.createUser({
       id: userId,
       email: normalizedEmail,
-      passwordHash
+      passwordHash,
+      name: name?.trim() || ''
     });
 
     console.log(`[auth/register] User registered successfully: ${normalizedEmail}`);

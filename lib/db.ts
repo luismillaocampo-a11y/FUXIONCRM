@@ -178,14 +178,16 @@ function getSqliteDb() {
     );`);
   } catch (e) {}
 
-  try {
     sqliteDb.exec(`CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
+      name TEXT DEFAULT '',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );`);
-  } catch (e) {}
+    try {
+      sqliteDb.exec('ALTER TABLE users ADD COLUMN name TEXT DEFAULT "";');
+    } catch (e) {}
 
 
   // Insert default flows if empty
@@ -1469,21 +1471,23 @@ export const db = {
     return this.getBroadcastById(broadcast.id);
   },
 
-  async createUser(user: { id: string; email: string; passwordHash: string }): Promise<any> {
+  async createUser(user: { id: string; email: string; passwordHash: string; name?: string }): Promise<any> {
+    const fullName = user.name || '';
     if (useSupabase) {
       const res = await runSupabaseQuery((c) => c.from('users').insert({
         id: user.id,
         email: user.email,
-        password: user.passwordHash
+        password: user.passwordHash,
+        name: fullName
       }).select().single());
       if (res && !res.error) return res.data;
     }
 
     const db = getSqliteDb();
     db.prepare(`
-      INSERT INTO users (id, email, password)
-      VALUES (?, ?, ?)
-    `).run(user.id, user.email, user.passwordHash);
+      INSERT INTO users (id, email, password, name)
+      VALUES (?, ?, ?, ?)
+    `).run(user.id, user.email, user.passwordHash, fullName);
     return this.getUserByEmail(user.email);
   },
 
