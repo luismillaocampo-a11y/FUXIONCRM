@@ -35,6 +35,29 @@ function getSupabaseClient() {
 }
 
 /**
+ * GET /api/webhook/whatsapp
+ * Meta Webhook verification endpoint
+ */
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const mode = searchParams.get('hub.mode');
+  const token = searchParams.get('hub.verify_token');
+  const challenge = searchParams.get('hub.challenge');
+
+  if (mode === 'subscribe' && token) {
+    const verifyToken = await db.getSystemSetting('whatsapp_verify_token') || 'fuxion_verify_token';
+    if (token === verifyToken) {
+      console.log('[webhook/whatsapp] Meta Webhook verified successfully!');
+      return new Response(challenge, { status: 200 });
+    } else {
+      console.warn('[webhook/whatsapp] Meta Webhook verification failed. Tokens mismatch.');
+      return new Response('Forbidden', { status: 403 });
+    }
+  }
+  return new Response('Not Found', { status: 404 });
+}
+
+/**
  * Extracts phone digits from a WhatsApp ID.
  */
 function getPhoneFromWhatsappId(id: string): string | null {
@@ -136,22 +159,7 @@ async function sendWhatsAppMessage(phone: string, text: string) {
   await sendWhatsAppMessageDynamic(phone, text);
 }
 
-/**
- * GET handler for webhook verification (needed by Meta/Evolution verification endpoints)
- */
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const mode = searchParams.get('hub.mode');
-  const token = searchParams.get('hub.verify_token');
-  const challenge = searchParams.get('hub.challenge');
 
-  if (mode === 'subscribe' && token) {
-    console.log('[webhook/whatsapp] GET challenge verification successful');
-    return new Response(challenge, { status: 200 });
-  }
-
-  return new Response('WhatsApp Webhook Active', { status: 200 });
-}
 
 /**
  * POST handler to process Evolution API / Baileys events

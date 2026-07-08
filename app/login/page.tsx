@@ -56,96 +56,103 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#090b12] text-slate-100 p-4 relative overflow-hidden select-none">
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#07090e] text-slate-100 p-4 relative overflow-hidden select-none">
       
-      {/* Background Decorative Neon Glows */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-[120px] pointer-events-none animate-pulse" />
+      {/* Subtle Background Glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="max-w-md w-full z-10 space-y-6">
         
-        {/* Logo and Brand */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex p-4 bg-gradient-to-br from-emerald-500/10 to-blue-500/5 border border-emerald-500/20 rounded-3xl text-emerald-400 shadow-[0_0_50px_rgba(16,185,129,0.08)]">
-            <Bot className="h-10 w-10 animate-[bounce_3s_infinite]" />
-          </div>
-          <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-            FUXION CRM
-          </h1>
-          <p className="text-xs text-slate-400 font-medium tracking-wide uppercase">
-            Plataforma de Ventas y WhatsApp con IA
-          </p>
-        </div>
-
-        {/* Auth Glassmorphism Card */}
-        <div className="bg-slate-950/40 border border-slate-800/80 backdrop-blur-2xl p-8 rounded-[32px] shadow-2xl relative">
+        {/* Auth Card */}
+        <div className="bg-[#0f111a] border border-[#1e2330] p-9 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.4)] relative">
           
+          {/* Top-Left Chat/Bot Icon */}
+          <div className="flex mb-6">
+            <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400">
+              <Bot className="h-6 w-6" />
+            </div>
+          </div>
+
+          {/* Header Texts */}
+          <div className="mb-6 space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-white">
+              {isRegistering ? 'Crear una cuenta' : 'Welcome back'}
+            </h1>
+            <p className="text-xs text-slate-400">
+              {isRegistering ? 'Regístrate para comenzar a usar el CRM' : 'Sign in to your account'}
+            </p>
+          </div>
+
           {/* Alerts */}
           {errorMsg && (
-            <div className="mb-5 p-3.5 rounded-2xl border border-rose-500/20 bg-rose-500/5 text-rose-300 text-xs flex gap-2.5 items-center shadow-[0_4px_20px_rgba(244,63,94,0.05)]">
-              <ShieldAlert className="h-4.5 w-4.5 text-rose-400 flex-shrink-0" />
+            <div className="mb-5 p-3 rounded-xl border border-rose-500/20 bg-rose-500/5 text-rose-300 text-xs flex gap-2 items-center">
+              <ShieldAlert className="h-4 w-4 text-rose-400 flex-shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
           {successMsg && (
-            <div className="mb-5 p-3.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-300 text-xs flex gap-2.5 items-center shadow-[0_4px_20px_rgba(16,185,129,0.05)]">
-              <CheckCircle className="h-4.5 w-4.5 text-emerald-400 flex-shrink-0" />
+            <div className="mb-5 p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-300 text-xs flex gap-2 items-center">
+              <CheckCircle className="h-4 w-4 text-emerald-400 flex-shrink-0" />
               <span>{successMsg}</span>
             </div>
           )}
 
-          <h2 className="text-lg font-bold text-white mb-6">
-            {isRegistering ? 'Crear Cuenta de Administrador' : 'Iniciar Sesión'}
-          </h2>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             
             {/* Correo */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Correo Electrónico</label>
+              <label className="text-xs font-medium text-slate-300 block">Email</label>
               <div className="relative">
                 <input 
                   type="email"
                   required
-                  placeholder="ejemplo@sudominio.com"
+                  placeholder="name@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-slate-900/60 border border-slate-800 rounded-2xl text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500/40 transition focus:ring-1 focus:ring-emerald-500/25"
+                  className="w-full px-4 py-3 bg-[#161922] border border-[#2a3040] rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition focus:ring-1 focus:ring-indigo-500/30"
                 />
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               </div>
             </div>
 
             {/* Contraseña */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Contraseña</label>
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-medium text-slate-300 block">Password</label>
+                {!isRegistering && (
+                  <button 
+                    type="button" 
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition cursor-pointer"
+                    onClick={() => alert('Por favor contacta al administrador del sistema para restablecer tu contraseña.')}
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <input 
                   type="password"
                   required
-                  placeholder="••••••••••••"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-slate-900/60 border border-slate-800 rounded-2xl text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500/40 transition focus:ring-1 focus:ring-emerald-500/25 font-mono"
+                  className="w-full px-4 py-3 bg-[#161922] border border-[#2a3040] rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition focus:ring-1 focus:ring-indigo-500/30"
                 />
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               </div>
             </div>
 
             {/* Confirmar Contraseña (Solo en registro) */}
             {isRegistering && (
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Confirmar Contraseña</label>
+                <label className="text-xs font-medium text-slate-300 block">Confirmar Contraseña</label>
                 <div className="relative">
                   <input 
                     type="password"
                     required
-                    placeholder="••••••••••••"
+                    placeholder="••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3.5 bg-slate-900/60 border border-slate-800 rounded-2xl text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500/40 transition focus:ring-1 focus:ring-emerald-500/25 font-mono"
+                    className="w-full px-4 py-3 bg-[#161922] border border-[#2a3040] rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition focus:ring-1 focus:ring-indigo-500/30"
                   />
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                 </div>
               </div>
             )}
@@ -154,17 +161,17 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-850 disabled:text-slate-600 text-white font-bold rounded-2xl text-xs uppercase tracking-wider transition-all duration-300 transform active:scale-[0.98] disabled:scale-100 disabled:opacity-50 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-550 text-white font-semibold rounded-xl text-xs transition-all duration-300 active:scale-[0.98] disabled:scale-100 disabled:opacity-50 cursor-pointer shadow-[0_4px_12px_rgba(99,102,241,0.2)]"
             >
               {loading ? (
                 <>
-                  <Loader2 className="h-4.5 w-4.5 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Procesando...
                 </>
               ) : (
                 <>
-                  <span>{isRegistering ? 'Crear Cuenta' : 'Entrar al Sistema'}</span>
-                  <ArrowRight className="h-4.5 w-4.5" />
+                  <span>{isRegistering ? 'Create account' : 'Sign in'}</span>
+                  <ArrowRight className="h-4 w-4" />
                 </>
               )}
             </button>
@@ -172,35 +179,41 @@ export default function LoginPage() {
           </form>
 
           {/* Toggle Register/Login Link */}
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                setIsRegistering(!isRegistering);
-                setErrorMsg(null);
-                setSuccessMsg(null);
-              }}
-              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-emerald-400 font-medium transition cursor-pointer"
-            >
-              {isRegistering ? (
-                <>
-                  <span>¿Ya tienes una cuenta? Inicia sesión</span>
-                </>
-              ) : (
-                <>
-                  <UserPlus size={14} />
-                  <span>¿No tienes una cuenta? Regístrate aquí</span>
-                </>
-              )}
-            </button>
+          <div className="mt-6 text-center text-xs text-slate-400">
+            {isRegistering ? (
+              <span>
+                ¿Ya tienes una cuenta?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegistering(false);
+                    setErrorMsg(null);
+                    setSuccessMsg(null);
+                  }}
+                  className="text-indigo-400 hover:text-indigo-300 font-semibold transition cursor-pointer"
+                >
+                  Inicia sesión
+                </button>
+              </span>
+            ) : (
+              <span>
+                Don't have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegistering(true);
+                    setErrorMsg(null);
+                    setSuccessMsg(null);
+                  }}
+                  className="text-indigo-400 hover:text-indigo-300 font-semibold transition cursor-pointer"
+                >
+                  Create account
+                </button>
+              </span>
+            )}
           </div>
 
         </div>
-
-        {/* Small Legal Disclaimer */}
-        <p className="text-[10px] text-center text-slate-600">
-          Protección de datos cifrada localmente y en la nube.
-        </p>
 
       </div>
     </div>
