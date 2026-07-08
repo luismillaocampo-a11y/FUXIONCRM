@@ -51,23 +51,121 @@
   --accent: #8b5cf6;
 }
 
+/* Light Mode Theme */
+.light {
+  --background: #d8ffff; /* Soft fresh light cyan-blue recommended background */
+  --foreground: #0f172a; /* Dark slate text */
+  --card: #ffffff; /* Clean white card */
+  --card-border: #bfe3e3; /* Soft border color */
+  --border: #bfe3e3;
+  --input: #f0fdfd;
+}
+
+.light body {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+}
+
+/* Override dark background classes in Light Mode */
+.light .bg-\[\#07090e\], 
+.light .bg-\[\#090b11\], 
+.light .bg-\[\#0a0c13\], 
+.light .bg-\[\#0c0e17\], 
+.light .bg-\[\#0c0f1d\],
+.light .bg-slate-900,
+.light .bg-slate-950,
+.light .bg-\[\#07090e\/50\],
+.light main {
+  background-color: var(--background) !important;
+}
+
+.light aside {
+  background-color: #e0fafa !important;
+  border-right: 1px solid var(--card-border) !important;
+}
+
+/* Override dark card classes in Light Mode */
+.light .bg-\[\#0f111a\],
+.light .bg-slate-900\/40,
+.light .bg-slate-950\/20,
+.light .bg-\[\#161922\],
+.light .bg-\[\#161922\/50\],
+.light .bg-\[\#161a29\],
+.light .bg-\[\#131722\]:hover,
+.light .react-flow__node {
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+  border-color: var(--card-border) !important;
+}
+
+/* Inputs in Light Mode */
+.light input, 
+.light textarea, 
+.light select {
+  background-color: var(--input) !important;
+  color: #0f172a !important;
+  border-color: var(--card-border) !important;
+}
+
+/* Border overrides in Light Mode */
+.light .border-\[\#1e2330\],
+.light .border-\[\#2a3040\],
+.light .border-slate-800,
+.light .border-slate-850,
+.light .border-b,
+.light .border-r {
+  border-color: var(--card-border) !important;
+}
+
+/* Text color fixes in Light Mode */
+.light .text-slate-100,
+.light .text-white,
+.light h1,
+.light h2,
+.light h3,
+.light h4,
+.light .text-slate-200,
+.light .text-slate-300 {
+  color: #0f172a !important;
+}
+
+.light .text-slate-400 {
+  color: #475569 !important;
+}
+
+.light .text-slate-500 {
+  color: #64748b !important;
+}
+
 /* Custom CSS overrides to map Tailwind hardcoded emerald styles dynamically */
-.text-emerald-400, .text-emerald-500 {
+.text-emerald-300, .text-emerald-400, .text-emerald-500, .text-emerald-600, .text-emerald-700 {
   color: var(--primary) !important;
 }
-.bg-emerald-500, .bg-emerald-600 {
+.bg-emerald-350, .bg-emerald-400, .bg-emerald-500, .bg-emerald-600, .bg-emerald-750 {
   background-color: var(--primary) !important;
+}
+.bg-emerald-500\/5 {
+  background-color: color-mix(in srgb, var(--primary) 5%, transparent) !important;
 }
 .bg-emerald-500\/10 {
   background-color: color-mix(in srgb, var(--primary) 10%, transparent) !important;
 }
-.border-emerald-500\/20 {
+.bg-emerald-500\/15 {
+  background-color: color-mix(in srgb, var(--primary) 15%, transparent) !important;
+}
+.bg-emerald-500\/20 {
+  background-color: color-mix(in srgb, var(--primary) 20%, transparent) !important;
+}
+.hover\:bg-emerald-500\/25:hover {
+  background-color: color-mix(in srgb, var(--primary) 25%, transparent) !important;
+}
+.border-emerald-500\/10, .border-emerald-500\/15, .border-emerald-500\/20, .border-emerald-500\/25, .border-emerald-500\/30 {
   border-color: color-mix(in srgb, var(--primary) 20%, transparent) !important;
 }
-.border-emerald-500\/15 {
-  border-color: color-mix(in srgb, var(--primary) 15%, transparent) !important;
+.hover\:border-emerald-400\/60:hover, .hover\:border-emerald-500\/60:hover {
+  border-color: color-mix(in srgb, var(--primary) 60%, transparent) !important;
 }
-.hover\:bg-emerald-600:hover {
+.hover\:bg-emerald-600:hover, .hover\:bg-emerald-500:hover {
   background-color: var(--primary-hover) !important;
 }
 .shadow-emerald-500\/10 {
@@ -79,6 +177,7 @@
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--primary) !important;
 }
+
 
 
 body {
