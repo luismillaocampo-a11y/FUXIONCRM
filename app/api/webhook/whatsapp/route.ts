@@ -247,7 +247,8 @@ export async function POST(request: Request) {
     }
 
     // Ignore group chats, status, or empty phone
-    if (remoteJid === 'status@broadcast' || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@g.us')) {
+    const rawRemoteJid = (data?.key?.remoteJid || key?.remoteJid || '').toString();
+    if (rawRemoteJid === 'status@broadcast' || rawRemoteJid.endsWith('@broadcast') || rawRemoteJid.endsWith('@g.us')) {
       console.log('[webhook/whatsapp] Ignored: Group, broadcast or status message');
       return NextResponse.json({ success: true, message: 'Ignored: Group or broadcast message' });
     }

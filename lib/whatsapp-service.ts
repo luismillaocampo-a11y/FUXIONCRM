@@ -115,7 +115,8 @@ class WhatsAppService {
               const phoneJid = hasAlt ? key.remoteJidAlt.toString() : key.remoteJid.toString();
               const lidJid = hasAlt ? key.remoteJid.toString() : null;
 
-              if (phoneJid === 'status@broadcast' || phoneJid.endsWith('@broadcast') || phoneJid.endsWith('@g.us')) continue;
+              const rawRemoteJid = (key.remoteJid || '').toString();
+              if (rawRemoteJid === 'status@broadcast' || rawRemoteJid.endsWith('@broadcast') || rawRemoteJid.endsWith('@g.us')) continue;
               const fromMe = incoming.key?.fromMe ?? false;
               if (message.protocolMessage || message.messageStubType) continue;
 
