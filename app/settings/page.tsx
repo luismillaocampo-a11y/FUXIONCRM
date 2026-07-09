@@ -193,8 +193,8 @@ export default function SettingsPage() {
             <Settings className="h-5 w-5 animate-[spin_10s_linear_infinite]" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white">Settings</h1>
-            <p className="text-xs text-slate-400 mt-0.5">Everything in one place — your account and your workspace. Pick a section to manage it.</p>
+            <h1 className="text-lg font-bold text-white">Configuración</h1>
+            <p className="text-xs text-slate-400 mt-0.5">Todo en un solo lugar — tu cuenta y tu espacio de trabajo. Elige una sección para administrarla.</p>
           </div>
         </div>
         <button 
@@ -222,18 +222,18 @@ export default function SettingsPage() {
               }`}
             >
               <Grid size={15} />
-              <span>Overview</span>
+              <span>Resumen</span>
             </button>
           </div>
 
           {/* Account Sub-category */}
           <div className="space-y-2">
-            <span className="text-[10px] font-bold text-slate-500 tracking-widest uppercase block pl-3">Account</span>
+            <span className="text-[10px] font-bold text-slate-500 tracking-widest uppercase block pl-3">Cuenta</span>
             <div className="space-y-1">
               {[
-                { id: 'profile', label: 'Your profile', icon: User },
-                { id: 'security', label: 'Login & security', icon: Lock },
-                { id: 'appearance', label: 'Appearance', icon: Palette }
+                { id: 'profile', label: 'Tu perfil', icon: User },
+                { id: 'security', label: 'Seguridad e ingreso', icon: Lock },
+                { id: 'appearance', label: 'Apariencia', icon: Palette }
               ].map((item) => {
                 const Icon = item.icon;
                 const isActive = activeSection === item.id;
@@ -262,13 +262,13 @@ export default function SettingsPage() {
 
           {/* Workspace Sub-category */}
           <div className="space-y-2">
-            <span className="text-[10px] font-bold text-slate-500 tracking-widest uppercase block pl-3">Workspace</span>
+            <span className="text-[10px] font-bold text-slate-500 tracking-widest uppercase block pl-3">Espacio de trabajo</span>
             <div className="space-y-1">
               {[
-                { id: 'whatsapp', label: 'WhatsApp Connection', icon: MessageSquare },
-                { id: 'ai', label: 'AI Settings', icon: Bot },
-                { id: 'smtp', label: 'SMTP Mail Server', icon: Mail },
-                { id: 'system', label: 'General Settings', icon: Settings }
+                { id: 'whatsapp', label: 'Conexión de WhatsApp', icon: MessageSquare },
+                { id: 'ai', label: 'Ajustes de IA', icon: Bot },
+                { id: 'smtp', label: 'Servidor de Correo SMTP', icon: Mail },
+                { id: 'system', label: 'Ajustes Generales', icon: Settings }
               ].map((item) => {
                 const Icon = item.icon;
                 const isActive = activeSection === item.id;
@@ -287,7 +287,7 @@ export default function SettingsPage() {
                       <span>{item.label}</span>
                     </div>
                     {item.id === 'smtp' && configs.smtp_host && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-850 text-slate-500 font-mono">active</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-850 text-slate-500 font-mono">activo</span>
                     )}
                   </button>
                 );
@@ -343,18 +343,18 @@ export default function SettingsPage() {
                         <p className="text-xs text-slate-400">{configs.admin_email || 'admin@sudominio.com'}</p>
                       </div>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] font-bold text-amber-400 tracking-wider uppercase">Owner</span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] font-bold text-amber-400 tracking-wider uppercase">Propietario</span>
                   </div>
 
                   {/* Cards Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[
-                      { id: 'whatsapp', label: 'WhatsApp API', icon: MessageSquare, desc: 'Conexión a Meta o Evolution API' },
-                      { id: 'ai', label: 'AI Settings', icon: Bot, desc: 'Gestión de Gemini API Key y RAG' },
-                      { id: 'smtp', label: 'SMTP Mail Server', icon: Mail, desc: 'Servidor de envío de alertas' },
-                      { id: 'profile', label: 'Your Profile', icon: User, desc: 'Edita tu alias y datos de cuenta' },
-                      { id: 'security', label: 'Login & Security', icon: Lock, desc: 'Cambia tu contraseña' },
-                      { id: 'appearance', label: 'Appearance', icon: Palette, desc: 'Tema oscuro / claro y colores' }
+                      { id: 'whatsapp', label: 'API de WhatsApp', icon: MessageSquare, desc: 'Conexión a Meta o Evolution API' },
+                      { id: 'ai', label: 'Ajustes de IA', icon: Bot, desc: 'Gestión de Gemini API Key y RAG' },
+                      { id: 'smtp', label: 'Servidor SMTP', icon: Mail, desc: 'Servidor de envío de alertas' },
+                      { id: 'profile', label: 'Tu Perfil', icon: User, desc: 'Edita tu alias y datos de cuenta' },
+                      { id: 'security', label: 'Seguridad e Ingreso', icon: Lock, desc: 'Cambia tu contraseña' },
+                      { id: 'appearance', label: 'Apariencia', icon: Palette, desc: 'Tema oscuro / claro y colores' }
                     ].map((card) => {
                       const Icon = card.icon;
                       return (
@@ -382,7 +382,7 @@ export default function SettingsPage() {
               {activeSection === 'profile' && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-base font-bold text-white mb-1">Your profile</h2>
+                    <h2 className="text-base font-bold text-white mb-1">Tu perfil</h2>
                     <p className="text-xs text-slate-400">Edita cómo apareces ante el equipo de ventas. Tu alias y avatar se muestran en las barras principales.</p>
                   </div>
 
@@ -414,15 +414,15 @@ export default function SettingsPage() {
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-[#161922] border border-[#2a3040] rounded-lg text-xs font-semibold text-white hover:bg-[#1f2431] transition cursor-pointer"
                         >
                           <Upload size={13} />
-                          <span>Upload photo</span>
+                          <span>Subir foto</span>
                         </button>
-                        <p className="text-[10px] text-slate-500">PNG, JPG or WebP. Up to 2 MB.</p>
+                        <p className="text-[10px] text-slate-500">PNG, JPG o WebP. Hasta 2 MB.</p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-300 block">Display name</label>
+                        <label className="text-xs font-medium text-slate-300 block">Nombre en pantalla</label>
                         <input 
                           type="text"
                           value={configs.display_name}
@@ -431,7 +431,7 @@ export default function SettingsPage() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-300 block">Email</label>
+                        <label className="text-xs font-medium text-slate-300 block">Correo electrónico</label>
                         <input 
                           type="email"
                           value={configs.admin_email || 'admin@sudominio.com'}
@@ -443,11 +443,11 @@ export default function SettingsPage() {
 
                     <div className="pt-4 border-t border-[#1e2330] grid grid-cols-2 gap-4 text-xs text-slate-400">
                       <div>
-                        <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider mb-0.5">Role</span>
-                        <span className="text-white font-medium">user (Administrator)</span>
+                        <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider mb-0.5">Rol</span>
+                        <span className="text-white font-medium">Usuario (Administrador)</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider mb-0.5">Joined</span>
+                        <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider mb-0.5">Registrado el</span>
                         <span className="text-white font-medium">29 de junio de 2026</span>
                       </div>
                     </div>
@@ -456,10 +456,10 @@ export default function SettingsPage() {
                       <button
                         onClick={() => handleSubmit()}
                         disabled={loading}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white rounded-lg transition"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-xs font-bold text-white rounded-lg transition"
                       >
                         <Save size={13} />
-                        <span>Save changes</span>
+                        <span>Guardar cambios</span>
                       </button>
                     </div>
 
@@ -471,16 +471,16 @@ export default function SettingsPage() {
               {activeSection === 'security' && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-base font-bold text-white mb-1">Login & security</h2>
+                    <h2 className="text-base font-bold text-white mb-1">Seguridad e ingreso</h2>
                     <p className="text-xs text-slate-400">Administra y actualiza las contraseñas de acceso y las sesiones activas en tus dispositivos.</p>
                   </div>
 
                   <div className="p-6 bg-[#0f111a] border border-[#1e2330] rounded-xl space-y-6">
-                    <span className="text-xs font-bold text-white block mb-4">Password</span>
+                    <span className="text-xs font-bold text-white block mb-4">Contraseña</span>
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1.5 col-span-1">
-                          <label className="text-xs font-medium text-slate-300 block">Current password</label>
+                          <label className="text-xs font-medium text-slate-300 block">Contraseña actual</label>
                           <input 
                             type="password"
                             placeholder="••••••••"
@@ -488,7 +488,7 @@ export default function SettingsPage() {
                           />
                         </div>
                         <div className="space-y-1.5 col-span-1">
-                          <label className="text-xs font-medium text-slate-300 block">New password</label>
+                          <label className="text-xs font-medium text-slate-300 block">Nueva contraseña</label>
                           <input 
                             type="password"
                             placeholder="••••••••"
@@ -496,7 +496,7 @@ export default function SettingsPage() {
                           />
                         </div>
                         <div className="space-y-1.5 col-span-1">
-                          <label className="text-xs font-medium text-slate-300 block">Confirm new password</label>
+                          <label className="text-xs font-medium text-slate-300 block">Confirmar nueva contraseña</label>
                           <input 
                             type="password"
                             placeholder="••••••••"
@@ -508,16 +508,16 @@ export default function SettingsPage() {
                         <button
                           type="button"
                           onClick={() => alert('Contraseña actualizada con éxito (Simulado).')}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white rounded-lg transition"
+                          className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-xs font-bold text-white rounded-lg transition"
                         >
-                          Update password
+                          Actualizar contraseña
                         </button>
                       </div>
                     </div>
 
                     <div className="pt-6 border-t border-[#1e2330] space-y-4">
                       <div>
-                        <span className="text-xs font-bold text-white block">Active sessions</span>
+                        <span className="text-xs font-bold text-white block">Sesiones activas</span>
                         <p className="text-[10px] text-slate-400 mt-0.5">Dispositivos donde tienes iniciada sesión actualmente.</p>
                       </div>
                       <div className="p-4 bg-[#161922]/50 border border-[#2a3040] rounded-lg flex items-center justify-between text-xs text-slate-400">
@@ -532,7 +532,7 @@ export default function SettingsPage() {
                           }}
                           className="px-3 py-1 bg-[#1c202d] border border-[#2c3347] hover:bg-[#252c3f] rounded-lg text-[10px] font-semibold text-white transition"
                         >
-                          Sign out of all devices
+                          Cerrar sesión en todos los dispositivos
                         </button>
                       </div>
                     </div>
@@ -545,7 +545,7 @@ export default function SettingsPage() {
               {activeSection === 'appearance' && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-base font-bold text-white mb-1">Appearance</h2>
+                    <h2 className="text-base font-bold text-white mb-1">Apariencia</h2>
                     <p className="text-xs text-slate-400">Elige el tema visual del CRM y los colores de énfasis aplicados en los botones, menús y barras activas.</p>
                   </div>
 
@@ -553,11 +553,11 @@ export default function SettingsPage() {
                     
                     {/* Theme Mode Selector */}
                     <div className="space-y-3">
-                      <span className="text-xs font-bold text-white block">Mode</span>
+                      <span className="text-xs font-bold text-white block">Tema</span>
                       <div className="grid grid-cols-2 gap-4">
                         {[
-                          { id: 'light', label: 'Light Mode', desc: 'Vista clásica clara' },
-                          { id: 'dark', label: 'Dark Mode', desc: 'Fondo oscuro premium' }
+                          { id: 'light', label: 'Modo Claro', desc: 'Vista clásica clara' },
+                          { id: 'dark', label: 'Modo Oscuro', desc: 'Fondo oscuro premium' }
                         ].map((m) => (
                           <button
                             key={m.id}
@@ -565,7 +565,7 @@ export default function SettingsPage() {
                             onClick={() => handleAppearanceUpdate(m.id as any, selectedAccent)}
                             className={`p-4 rounded-xl border text-left transition duration-300 ${
                               selectedMode === m.id 
-                                ? 'bg-indigo-500/10 border-indigo-500/50 shadow-md' 
+                                ? 'bg-[#181d2f] border-indigo-500 shadow-md' 
                                 : 'bg-[#161922] border-[#2a3040] hover:bg-[#1a1f2b]'
                             }`}
                           >
@@ -578,14 +578,14 @@ export default function SettingsPage() {
 
                     {/* Accent Color Selector */}
                     <div className="space-y-3 pt-6 border-t border-[#1e2330]">
-                      <span className="text-xs font-bold text-white block">Accent color</span>
+                      <span className="text-xs font-bold text-white block">Color de énfasis</span>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {[
-                          { id: 'violet', label: 'Violet', color: 'bg-violet-600', text: 'Confidente y expresivo.' },
-                          { id: 'emerald', label: 'Emerald (Fuxion)', color: 'bg-emerald-600', text: 'Color de crecimiento oficial.' },
-                          { id: 'cobalt', label: 'Cobalt', color: 'bg-blue-600', text: 'Limpio y corporativo.' },
-                          { id: 'amber', label: 'Amber', color: 'bg-amber-600', text: 'Cálido y amigable.' },
-                          { id: 'rose', label: 'Rose', color: 'bg-rose-600', text: 'Moderno y atrevido.' }
+                          { id: 'violet', label: 'Violeta', color: 'bg-violet-600', text: 'Elegante y creativo.' },
+                          { id: 'emerald', label: 'Esmeralda (Fuxion)', color: 'bg-emerald-600', text: 'Color de crecimiento oficial.' },
+                          { id: 'cobalt', label: 'Cobalto', color: 'bg-blue-600', text: 'Limpio y profesional.' },
+                          { id: 'amber', label: 'Ámbar', color: 'bg-amber-600', text: 'Cálido y dinámico.' },
+                          { id: 'rose', label: 'Rosa', color: 'bg-rose-600', text: 'Moderno y llamativo.' }
                         ].map((c) => (
                           <button
                             key={c.id}
@@ -635,7 +635,7 @@ export default function SettingsPage() {
                     {/* Form block */}
                     <div className="flex-1 space-y-6">
                       <div>
-                        <h2 className="text-base font-bold text-white mb-1">WhatsApp Connection</h2>
+                        <h2 className="text-base font-bold text-white mb-1">Conexión de WhatsApp</h2>
                         <p className="text-xs text-slate-400">Conecta tu cuenta de Meta WhatsApp Business API o Evolution API para automatizaciones avanzadas.</p>
                       </div>
 
@@ -705,10 +705,10 @@ export default function SettingsPage() {
                           <button
                             onClick={() => handleSubmit()}
                             disabled={loading}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white rounded-lg transition"
+                            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-xs font-bold text-white rounded-lg transition"
                           >
                             <Save size={13} />
-                            <span>Save WhatsApp Settings</span>
+                            <span>Guardar Ajustes de WhatsApp</span>
                           </button>
                         </div>
 
@@ -720,7 +720,7 @@ export default function SettingsPage() {
                       <div className="p-5 bg-[#0f111a] border border-[#1e2330] rounded-xl space-y-4">
                         <div className="flex items-center gap-2">
                           <BookOpen size={16} className="text-indigo-400" />
-                          <span className="text-xs font-bold text-white">Setup Instructions</span>
+                          <span className="text-xs font-bold text-white">Instrucciones de Configuración</span>
                         </div>
                         <p className="text-[10px] text-slate-400 leading-relaxed">
                           Sigue estos pasos para conectar tu Meta WhatsApp Business API:
@@ -751,7 +751,7 @@ export default function SettingsPage() {
               {activeSection === 'ai' && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-base font-bold text-white mb-1">AI Settings</h2>
+                    <h2 className="text-base font-bold text-white mb-1">Ajustes de IA</h2>
                     <p className="text-xs text-slate-400">Configura la clave principal de Gemini y los parámetros globales de automatización.</p>
                   </div>
 
@@ -790,10 +790,10 @@ export default function SettingsPage() {
                       <button
                         onClick={() => handleSubmit()}
                         disabled={loading}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white rounded-lg transition"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-xs font-bold text-white rounded-lg transition"
                       >
                         <Save size={13} />
-                        <span>Save AI Settings</span>
+                        <span>Guardar Ajustes de IA</span>
                       </button>
                     </div>
 
@@ -805,7 +805,7 @@ export default function SettingsPage() {
               {activeSection === 'smtp' && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-base font-bold text-white mb-1">SMTP Mail Server</h2>
+                    <h2 className="text-base font-bold text-white mb-1">Servidor SMTP</h2>
                     <p className="text-xs text-slate-400">Configura tus servidores de salida de correo para el envío de alertas automáticas.</p>
                   </div>
 
@@ -871,10 +871,10 @@ export default function SettingsPage() {
                       <button
                         onClick={() => handleSubmit()}
                         disabled={loading}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white rounded-lg transition"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-xs font-bold text-white rounded-lg transition"
                       >
                         <Save size={13} />
-                        <span>Save SMTP Settings</span>
+                        <span>Guardar Ajustes SMTP</span>
                       </button>
                     </div>
 
@@ -886,7 +886,7 @@ export default function SettingsPage() {
               {activeSection === 'system' && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-base font-bold text-white mb-1">General Settings</h2>
+                    <h2 className="text-base font-bold text-white mb-1">Ajustes Generales</h2>
                     <p className="text-xs text-slate-400">Configuraciones de administración y notificaciones operacionales.</p>
                   </div>
 
@@ -912,10 +912,10 @@ export default function SettingsPage() {
                       <button
                         onClick={() => handleSubmit()}
                         disabled={loading}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white rounded-lg transition"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-xs font-bold text-white rounded-lg transition"
                       >
                         <Save size={13} />
-                        <span>Save General Settings</span>
+                        <span>Guardar Ajustes Generales</span>
                       </button>
                     </div>
 
