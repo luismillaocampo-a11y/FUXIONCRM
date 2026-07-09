@@ -100,11 +100,16 @@
 .light .bg-\[\#161922\],
 .light .bg-\[\#161922\/50\],
 .light .bg-\[\#161a29\],
-.light .bg-\[\#131722\]:hover,
-.light .react-flow__node {
+.light .bg-\[\#131722\]:hover {
   background-color: var(--card) !important;
   color: var(--foreground) !important;
   border-color: var(--card-border) !important;
+}
+
+.light .react-flow__node {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 /* Border overrides in Light Mode */
