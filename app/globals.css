@@ -270,6 +270,47 @@
 .light .bg-emerald-500\/5 { background-color: rgba(16, 185, 129, 0.08) !important; }
 .light .bg-purple-500\/5 { background-color: rgba(168, 85, 247, 0.08) !important; }
 
+/* Active sessions container and button overrides */
+.light [class*="bg-[#161922]/50"] {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+}
+.light [class*="bg-[#1c202d]"] {
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+  border-color: var(--card-border) !important;
+}
+.light [class*="bg-[#1c202d]"]:hover,
+.light [class*="hover:bg-[#252c3f]"]:hover {
+  background-color: var(--background) !important;
+}
+.light [class*="border-[#2c3347]"] {
+  border-color: var(--card-border) !important;
+}
+
+/* Dynamically redirect indigo Tailwind styles to dynamic primary theme color variables */
+.text-indigo-450, .text-indigo-400, .text-indigo-500, .text-indigo-600 {
+  color: var(--primary) !important;
+}
+.bg-indigo-500\/15 {
+  background-color: color-mix(in srgb, var(--primary) 15%, transparent) !important;
+}
+.bg-indigo-500\/20 {
+  background-color: color-mix(in srgb, var(--primary) 20%, transparent) !important;
+}
+.bg-indigo-500\/10 {
+  background-color: color-mix(in srgb, var(--primary) 10%, transparent) !important;
+}
+.border-indigo-500\/15, .border-indigo-500\/20, .border-indigo-500\/25, .border-indigo-500\/40 {
+  border-color: color-mix(in srgb, var(--primary) 25%, transparent) !important;
+}
+.bg-indigo-600 {
+  background-color: var(--primary) !important;
+}
+.hover\:bg-indigo-500:hover {
+  background-color: color-mix(in srgb, var(--primary) 85%, #ffffff) !important;
+}
+
 /* Light mode canvas overrides for flows builder */
 .light .xy-flow,
 .light .react-flow,

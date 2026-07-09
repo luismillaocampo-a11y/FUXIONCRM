@@ -23,7 +23,7 @@ export default function Sidebar() {
     { href: '/flows', label: 'Creador de Flujos', icon: GitFork },
     { href: '/broadcast', label: 'Mensajes Masivos', icon: Megaphone },
     { href: '/whatsapp', label: 'Conexión WhatsApp', icon: MessageSquare },
-    { href: '/settings', label: 'Configuración API', icon: Settings }
+    { href: '/settings', label: 'Configuración', icon: Settings }
   ];
 
   // Fetch global AI setting and manual leads count
