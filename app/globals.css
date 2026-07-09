@@ -238,6 +238,30 @@
   background-color: rgba(255, 255, 255, 0.9) !important;
   border-color: var(--card-border) !important;
 }
+
+/* Chat View Light Mode Overrides */
+.light .bg-\[\#0a0c16\] {
+  background-color: var(--background) !important;
+}
+
+.light .chat-message-text {
+  color: #0f172a !important;
+}
+
+/* Customer message bubble in Light Mode */
+.light .bg-slate-800\/80 {
+  background-color: var(--card) !important;
+  color: #0f172a !important;
+  border-color: var(--card-border) !important;
+}
+
+/* Bot/Agent bubbles text contrast fixes in Light Mode */
+.light .text-emerald-100 {
+  color: #065f46 !important;
+}
+.light .text-cyan-100 {
+  color: #0369a1 !important;
+}
 .light .bg-\[\#0c0f1d\]\/90 h4 {
   color: #64748b !important;
 }
