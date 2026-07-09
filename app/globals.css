@@ -100,6 +100,12 @@
 .light .bg-\[\#161922\],
 .light .bg-\[\#161922\/50\],
 .light .bg-\[\#161a29\],
+.light .bg-\[\#0c0f1d\],
+.light .bg-\[\#0c0f1d\]\/80,
+.light .bg-\[\#0c0f1d\]\/90,
+.light .bg-\[\#0c0f1d\]\/50,
+.light .bg-\[\#090b12\]\/80,
+.light .bg-\[\#090b12\]\/90,
 .light .bg-\[\#131722\]:hover {
   background-color: var(--card) !important;
   color: var(--foreground) !important;
