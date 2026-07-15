@@ -1485,6 +1485,9 @@ export const db = {
         name: fullName
       }).select().single());
       if (res && !res.error) return res.data;
+      if (res && res.error) {
+        throw new Error(`Fallo al registrar usuario en Supabase: ${res.error.message}`);
+      }
     }
 
     const db = getSqliteDb();
