@@ -24,6 +24,10 @@ export default function BroadcastPage() {
   // List of all unique tags from database
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
+  // Modales de Confirmación y Alerta
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState<string | null>(null);
+
   const fetchLeadsAndBroadcasts = useCallback(async () => {
     try {
       const [leadsRes, bcastRes] = await Promise.all([
@@ -105,20 +109,21 @@ export default function BroadcastPage() {
     );
   };
 
-  const handleSendCampaign = async (e: React.FormEvent) => {
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !message.trim()) return;
 
     const targetCount = getFilteredTargetCount();
     if (targetCount === 0) {
-      alert('La campaña no tiene destinatarios asignados.');
+      setShowErrorModal('La campaña no tiene destinatarios asignados. Por favor, selecciona al menos un estado o etiqueta que contenga contactos.');
       return;
     }
 
-    if (!confirm(`¿Estás seguro de que deseas enviar esta campaña masiva a ${targetCount} contactos?\nEl sistema enviará los mensajes uno a uno con un delay de seguridad de 3 a 6 segundos para evitar spam.`)) {
-      return;
-    }
+    setShowConfirmModal(true);
+  };
 
+  const executeSendCampaign = async () => {
+    setShowConfirmModal(false);
     setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -232,7 +237,7 @@ export default function BroadcastPage() {
                 Nueva Campaña de Difusión
               </h3>
 
-              <form onSubmit={handleSendCampaign} className="space-y-4">
+              <form onSubmit={handleFormSubmit} className="space-y-4">
                 
                 {/* Nombre */}
                 <div className="space-y-1.5">
@@ -431,6 +436,74 @@ export default function BroadcastPage() {
         </div>
 
       </div>
+
+      {/* Modal de Confirmación Premium */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0f1224] border border-slate-800 rounded-3xl p-6 max-w-md w-full mx-4 shadow-2xl relative space-y-4">
+            <div className="flex items-center gap-3 text-amber-405">
+              <div className="p-2.5 bg-amber-500/10 rounded-xl border border-amber-500/20 text-amber-400">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <h3 className="text-base font-bold text-white">¿Confirmar Envío Masivo?</h3>
+            </div>
+            
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Estás a punto de iniciar la campaña de difusión masiva <strong className="text-white">"${name}"</strong> para <strong className="text-emerald-400 font-semibold">${getFilteredTargetCount()} contacto(s)</strong>.
+            </p>
+            
+            <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 text-[10px] text-slate-400 leading-relaxed space-y-1">
+              <p className="text-amber-400 font-medium">⚠️ Recomendación de Seguridad:</p>
+              <p>Los mensajes se enviarán uno por uno con un intervalo aleatorio de <strong>3 a 6 segundos</strong>. Esto imita la conducta humana y protege tu línea de WhatsApp contra penalizaciones de spam.</p>
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900 border border-slate-800 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={executeSendCampaign}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-500 hover:bg-emerald-600 transition shadow-lg shadow-emerald-500/20"
+              >
+                Sí, Iniciar Envío
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Alerta de Error */}
+      {showErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0f1224] border border-slate-800 rounded-3xl p-6 max-w-md w-full mx-4 shadow-2xl relative space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="p-2.5 bg-rose-500/10 rounded-xl border border-rose-500/20">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <h3 className="text-base font-bold text-white">Error de Destinatarios</h3>
+            </div>
+            
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {showErrorModal}
+            </p>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowErrorModal(null)}
+                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
