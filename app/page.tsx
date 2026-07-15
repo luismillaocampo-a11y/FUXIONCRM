@@ -135,25 +135,40 @@ function CRMDashboard() {
   // Scroll automático al fondo del chat estilo WhatsApp
   useEffect(() => {
     const container = chatContainerRef.current;
-    if (!container || chatMessages.length === 0) return;
+    if (!container) return;
 
     const currentLeadId = selectedLead?.id || null;
+    
+    // Si no hay lead seleccionado o no hay mensajes, reiniciar contadores y salir
+    if (!currentLeadId || chatMessages.length === 0) {
+      if (!currentLeadId) {
+        prevLeadIdRef.current = null;
+        prevMessagesCountRef.current = 0;
+      }
+      return;
+    }
+
     const isNewConversation = prevLeadIdRef.current !== currentLeadId;
 
     if (isNewConversation) {
-      // Al cambiar de conversación, scroll instantáneo
+      // Registrar nueva conversación e inicializar
       prevLeadIdRef.current = currentLeadId;
       prevMessagesCountRef.current = chatMessages.length;
       
-      // Scroll inmediato sin animación
+      // Scroll instantáneo al fondo con reintentos para evitar desfases de renderizado y saltos de layout
       container.scrollTop = container.scrollHeight;
-      const timer = setTimeout(() => {
-        container.scrollTop = container.scrollHeight;
-      }, 50);
-      return () => clearTimeout(timer);
+      const t1 = setTimeout(() => { container.scrollTop = container.scrollHeight; }, 30);
+      const t2 = setTimeout(() => { container.scrollTop = container.scrollHeight; }, 100);
+      const t3 = setTimeout(() => { container.scrollTop = container.scrollHeight; }, 300);
+      
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
     }
 
-    // Si es la misma conversación y aumentó el número de mensajes (llegó o se envió uno nuevo)
+    // Si es la misma conversación y se agregó un nuevo mensaje
     const diff = chatMessages.length - prevMessagesCountRef.current;
     if (diff > 0) {
       if (diff <= 2) {
@@ -167,12 +182,14 @@ function CRMDashboard() {
           forceScrollToBottomRef.current = false;
           container.scrollTo({
             top: container.scrollHeight,
-            behavior: 'smooth' // Solo scroll suave cuando llega un mensaje nuevo al chat activo
+            behavior: 'smooth' // Scroll suave solo para nuevos mensajes
           });
         }
       } else {
-        // Carga masiva de mensajes tras fetch: scroll instantáneo sin animación
+        // Carga masiva o actualización de mensajes: scroll inmediato
         container.scrollTop = container.scrollHeight;
+        const t = setTimeout(() => { container.scrollTop = container.scrollHeight; }, 100);
+        return () => clearTimeout(t);
       }
     }
 
