@@ -28,7 +28,15 @@ export async function POST(request: Request) {
     const phone = lead?.phone || leadId;
 
     // 3. Enviar a WhatsApp (Evolution API / Meta con fallback a Baileys)
-    await sendWhatsAppMessageDynamic(phone, cleanMessage);
+    let cleanMsgToSend = cleanMessage;
+    let mediaUrl = undefined;
+    const attachmentMatch = cleanMessage.match(/📎 Imagen adjunta:\s*(https?:\/\/\S+)/);
+    if (attachmentMatch) {
+      mediaUrl = attachmentMatch[1];
+      cleanMsgToSend = cleanMessage.replace(/📎 Imagen adjunta:\s*(https?:\/\/\S+)/, '').trim();
+    }
+
+    await sendWhatsAppMessageDynamic(phone, cleanMsgToSend, mediaUrl);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { 
   Search, Plus, X, Send, User, Bot, MessageSquare, 
   Trash2, AlertCircle, RefreshCw, UserCheck, ToggleLeft, ToggleRight,
-  Smile, List, LayoutGrid, StickyNote, Bell, Trash, ChevronRight, Check
+  Smile, List, LayoutGrid, StickyNote, Bell, Trash, ChevronRight, Check,
+  Paperclip, Loader2
 } from 'lucide-react';
 
 const IDENTITY_MAPPING: { [key: string]: string[] } = {
@@ -98,7 +99,7 @@ interface LeadsViewProps {
     message: string;
     leadId: string;
   } | null>>;
-  handleSendMessage: (e: React.FormEvent) => void;
+  handleSendMessage: (e?: React.FormEvent, customText?: string) => void;
   handleDeleteChat: () => void;
   handleDeleteLead: () => void;
   handleToggleBot: (lead: any) => void;
@@ -167,6 +168,96 @@ export default function LeadsView({
   forceScrollToBottomRef,
   chatContainerRef
 }: LeadsViewProps) {
+
+  // Estados de archivos adjuntos para chat individual
+  const [attachmentUrl, setAttachmentUrl] = React.useState<string | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleAttachmentSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingAttachment(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        setAttachmentUrl(data.url);
+      } else {
+        alert(data.error || 'Error al subir archivo');
+      }
+    } catch (err) {
+      console.error('Error uploading file:', err);
+      alert('Error de red al subir archivo');
+    } finally {
+      setUploadingAttachment(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const localHandleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!typedMessage.trim() && !attachmentUrl) return;
+
+    let finalMessage = typedMessage.trim();
+    if (attachmentUrl) {
+      finalMessage = finalMessage 
+        ? `${finalMessage}\n📎 Imagen adjunta: ${attachmentUrl}` 
+        : `📎 Imagen adjunta: ${attachmentUrl}`;
+    }
+
+    handleSendMessage(e, finalMessage);
+    setAttachmentUrl(null);
+  };
+
+  const renderMessageContent = (text: string) => {
+    if (!text) return null;
+    let cleanText = text;
+    let mediaUrl = '';
+    
+    // Buscar patrón 📎 Imagen adjunta: URL
+    const attachmentMatch = text.match(/📎 Imagen adjunta:\s*(https?:\/\/\S+)/);
+    if (attachmentMatch) {
+      mediaUrl = attachmentMatch[1];
+      cleanText = text.replace(/📎 Imagen adjunta:\s*(https?:\/\/\S+)/, '').trim();
+    } else if (text.startsWith('http') && text.match(/\.(jpeg|jpg|gif|png|webp|mp4|webm|ogg)/i)) {
+      mediaUrl = text;
+      cleanText = '';
+    }
+
+    const isVideo = mediaUrl && mediaUrl.match(/\.(mp4|webm|ogg)/i);
+
+    return (
+      <div className="space-y-2">
+        {mediaUrl && (
+          <div className="rounded-xl overflow-hidden max-w-xs border border-slate-800 bg-slate-950/40 p-1 flex justify-center">
+            {isVideo ? (
+              <video 
+                src={mediaUrl} 
+                controls 
+                className="max-h-48 rounded object-contain" 
+              />
+            ) : (
+              <img 
+                src={mediaUrl} 
+                alt="Imagen" 
+                className="max-h-48 rounded object-contain cursor-pointer hover:scale-[1.02] transition-transform duration-200" 
+                onClick={() => window.open(mediaUrl, '_blank')}
+              />
+            )}
+          </div>
+        )}
+        {cleanText && <p className="whitespace-pre-wrap break-words">{cleanText}</p>}
+      </div>
+    );
+  };
 
   const getInitials = (name: string) => {
     if (!name) return 'U';
@@ -423,7 +514,7 @@ export default function LeadsView({
                             ? 'bg-emerald-600/15 text-emerald-100 rounded-tr-none border border-emerald-500/20'
                             : 'bg-indigo-600/20 text-indigo-100 rounded-tr-none border border-indigo-500/20'
                       }`}>
-                        {msg.message}
+                        {renderMessageContent(msg.message)}
                       </div>
                     </div>
                   );
@@ -444,7 +535,7 @@ export default function LeadsView({
             </div>
 
             {/* Input y simulador en pie de página */}
-            <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-900 bg-[#090b11]/40 flex flex-col gap-2">
+            <form onSubmit={localHandleSubmit} className="p-4 border-t border-slate-900 bg-[#090b11]/40 flex flex-col gap-2">
               <div className="flex items-center justify-between px-2 text-[10px] text-slate-500">
                 <span className="tracking-wider uppercase">Responder en modo:</span>
                 <button
@@ -458,12 +549,53 @@ export default function LeadsView({
                 </button>
               </div>
 
-              <div className="flex gap-2 relative">
+              {/* Preview de adjunto cargado */}
+              {attachmentUrl && (
+                <div className="relative inline-flex items-center gap-2 p-1.5 bg-slate-900 border border-slate-800 rounded-xl max-w-xs animate-fade-in self-start">
+                  {attachmentUrl.match(/\.(mp4|webm|ogg)/i) ? (
+                    <video src={attachmentUrl} className="h-10 w-10 object-cover rounded" muted />
+                  ) : (
+                    <img src={attachmentUrl} alt="Preview" className="h-10 w-10 object-cover rounded" />
+                  )}
+                  <span className="text-[10px] text-slate-400 truncate max-w-[120px]">Archivo adjunto listo</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachmentUrl(null)}
+                    className="p-1 bg-rose-500 hover:bg-rose-600 text-white rounded-full transition ml-2 shadow-lg"
+                  >
+                    <X size={8} />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex gap-2 relative items-center">
+                {/* Botón de Adjunto (📎) */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingAttachment}
+                  className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-500 hover:text-indigo-400 transition hover:bg-slate-900 disabled:opacity-50 shrink-0"
+                  title="Adjuntar imagen o video"
+                >
+                  {uploadingAttachment ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+                  ) : (
+                    <Paperclip className="h-4 w-4" />
+                  )}
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleAttachmentSelect}
+                  accept="image/*,video/*"
+                  className="hidden"
+                />
+
                 <div className="relative flex-1 flex items-center">
                   <button
                     type="button"
                     onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="absolute left-3.5 text-slate-500 hover:text-indigo-400 transition"
+                    className="absolute left-3.5 text-slate-500 hover:text-indigo-400 transition z-10"
                   >
                     <Smile className="h-4 w-4" />
                   </button>
@@ -495,7 +627,7 @@ export default function LeadsView({
                 </div>
                 <button
                   type="submit"
-                  disabled={!typedMessage.trim() || chatLoading}
+                  disabled={(!typedMessage.trim() && !attachmentUrl) || chatLoading}
                   className={`p-2.5 rounded-xl transition-all ${
                     isSimulatingCustomer 
                       ? 'bg-emerald-500 text-white hover:bg-emerald-600' 

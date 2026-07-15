@@ -9,8 +9,9 @@ import { whatsappService } from './whatsapp-service';
  * 3. Local Baileys connection (QR code) -> Default fallback if no external API is configured
  */
 export async function sendWhatsAppMessageDynamic(phone: string, text: string, mediaUrl?: string): Promise<{ success: boolean; api: 'meta' | 'evolution' | 'baileys' }> {
-  if (!text || !text.toString().trim()) {
-    throw new Error('Message text is required');
+  const hasText = text && text.toString().trim();
+  if (!hasText && !mediaUrl) {
+    throw new Error('Message text or mediaUrl is required');
   }
 
   let url = await db.getSystemSetting('whatsapp_api_url');
@@ -40,7 +41,7 @@ export async function sendWhatsAppMessageDynamic(phone: string, text: string, me
         type: 'image',
         image: {
           link: mediaUrl,
-          caption: text.toString().trim()
+          caption: text ? text.toString().trim() : ""
         }
       } : {
         messaging_product: 'whatsapp',
@@ -78,12 +79,12 @@ export async function sendWhatsAppMessageDynamic(phone: string, text: string, me
       
       const payload = mediaUrl ? {
         number: cleanPhone,
-        caption: text.toString().trim(),
+        caption: text ? text.toString().trim() : "",
         media: mediaUrl,
         mediatype: 'image'
       } : {
         number: cleanPhone,
-        text: text.toString().trim()
+        text: text ? text.toString().trim() : ""
       };
 
       const response = await fetch(endpoint, {

@@ -670,11 +670,12 @@ function CRMDashboard() {
   };
 
   // Enviar mensaje (como Agente o Cliente simulado)
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!typedMessage.trim() || !selectedLead) return;
+  const handleSendMessage = async (e?: React.FormEvent, customText?: string) => {
+    if (e) e.preventDefault();
+    const textToSend = customText !== undefined ? customText : typedMessage;
+    if (!textToSend.trim() || !selectedLead) return;
 
-    const messageText = typedMessage.trim();
+    const messageText = textToSend.trim();
     setTypedMessage('');
     setChatLoading(true);
 
