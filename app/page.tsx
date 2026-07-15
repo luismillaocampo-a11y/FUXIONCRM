@@ -1024,7 +1024,14 @@ function CRMDashboard() {
             {(['dashboard', 'leads', 'kanban', 'gaps', 'kb'] as const).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => {
+                  setActiveTab(tab);
+                  if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('tab', tab);
+                    window.history.pushState({}, '', url.pathname + url.search);
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeTab === tab
                     ? 'bg-slate-850 text-white border border-slate-700'
