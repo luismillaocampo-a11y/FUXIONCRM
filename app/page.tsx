@@ -79,7 +79,8 @@ function CRMDashboard() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const chatContainerRef = React.useRef<HTMLDivElement>(null);
   const chatCountRef = React.useRef(0);
-  const lastScrolledLeadIdRef = React.useRef<string | null>(null);
+  const prevLeadIdRef = React.useRef<string | null>(null);
+  const prevMessagesCountRef = React.useRef<number>(0);
   const selectedLeadRef = React.useRef<any>(null);
   const forceScrollToBottomRef = React.useRef(false);
   const statusTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -137,33 +138,39 @@ function CRMDashboard() {
     if (!container || chatMessages.length === 0) return;
 
     const currentLeadId = selectedLead?.id || null;
-    const isNewConversation = lastScrolledLeadIdRef.current !== currentLeadId;
+    const isNewConversation = prevLeadIdRef.current !== currentLeadId;
 
     if (isNewConversation) {
-      lastScrolledLeadIdRef.current = currentLeadId;
-      // Scroll inmediato al fondo al cambiar de chat
-      setTimeout(() => {
+      // Al cambiar de conversación, scroll instantáneo
+      prevLeadIdRef.current = currentLeadId;
+      prevMessagesCountRef.current = chatMessages.length;
+      
+      // Scroll inmediato sin animación
+      container.scrollTop = container.scrollHeight;
+      const timer = setTimeout(() => {
         container.scrollTop = container.scrollHeight;
       }, 50);
-      return;
+      return () => clearTimeout(timer);
     }
 
-    // Si hay un nuevo mensaje, scroll suave condicional
-    const lastMessage = chatMessages[chatMessages.length - 1];
-    const isSentByUs = lastMessage?.sender === 'agent' || lastMessage?.sender === 'bot';
-    
-    // Tolerancia de 150px del fondo
-    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 150;
+    // Si es la misma conversación y aumentó el número de mensajes (llegó o se envió uno nuevo)
+    if (chatMessages.length > prevMessagesCountRef.current) {
+      const lastMessage = chatMessages[chatMessages.length - 1];
+      const isSentByUs = lastMessage?.sender === 'agent' || lastMessage?.sender === 'bot';
+      
+      // Tolerancia de 180px antes de agregar el nuevo mensaje
+      const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 180;
 
-    if (isSentByUs || isAtBottom || forceScrollToBottomRef.current) {
-      forceScrollToBottomRef.current = false;
-      setTimeout(() => {
+      if (isSentByUs || isAtBottom || forceScrollToBottomRef.current) {
+        forceScrollToBottomRef.current = false;
         container.scrollTo({
           top: container.scrollHeight,
-          behavior: 'smooth'
+          behavior: 'smooth' // Solo scroll suave cuando llega un mensaje nuevo al chat activo
         });
-      }, 50);
+      }
     }
+
+    prevMessagesCountRef.current = chatMessages.length;
   }, [chatMessages, selectedLead]);
   
   // Búsqueda y Filtros
