@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import { analyzeMultimediaFile } from '@/lib/gemini';
 import fs from 'fs';
 import path from 'path';
@@ -49,23 +49,57 @@ export async function POST(request: Request) {
     const mimeType = mimeTypes[fileType] || file.type || 'application/octet-stream';
     const dataUri = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
-    // Optionally attempt local save only if we have write permissions (e.g. local development)
+    // 1. Intentar subir a Supabase Storage si está configurado
     let publicUrl = dataUri;
-    try {
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-      // If we are not on Vercel/Lambda or if uploadsDir already exists and is writable, try writing
-      if (!process.env.VERCEL && !process.env.LAMBDA_TASK_ROOT) {
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
+    let uploadedToSupabase = false;
+
+    if (supabase) {
+      try {
         const uniqueFileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-        const filePath = path.join(uploadsDir, uniqueFileName);
-        fs.writeFileSync(filePath, buffer);
-        publicUrl = `/uploads/${uniqueFileName}`;
-        console.log(`Saved file locally for development: ${publicUrl}`);
+        // Subir al bucket 'knowledge'
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('knowledge')
+          .upload(uniqueFileName, buffer, {
+            contentType: mimeType,
+            upsert: true
+          });
+
+        if (uploadError) {
+          console.warn('Fallo al subir a Supabase Storage (se usará fallback):', uploadError.message);
+        } else if (uploadData) {
+          const { data: publicUrlData } = supabase.storage
+            .from('knowledge')
+            .getPublicUrl(uniqueFileName);
+
+          if (publicUrlData?.publicUrl) {
+            publicUrl = publicUrlData.publicUrl;
+            uploadedToSupabase = true;
+            console.log(`Guardado en Supabase Storage exitosamente: ${publicUrl}`);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Excepción al subir a Supabase Storage (se usará fallback):', err?.message || err);
       }
-    } catch (err) {
-      console.warn('Skipping local filesystem write (read-only environment). Using Data URI instead:', err);
+    }
+
+    // 2. Si no se subió a Supabase, intentar guardado local en desarrollo local
+    if (!uploadedToSupabase) {
+      try {
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+        // If we are not on Vercel/Lambda or if uploadsDir already exists and is writable, try writing
+        if (!process.env.VERCEL && !process.env.LAMBDA_TASK_ROOT) {
+          if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+          }
+          const uniqueFileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
+          const filePath = path.join(uploadsDir, uniqueFileName);
+          fs.writeFileSync(filePath, buffer);
+          publicUrl = `/uploads/${uniqueFileName}`;
+          console.log(`Saved file locally for development: ${publicUrl}`);
+        }
+      } catch (err) {
+        console.warn('Skipping local filesystem write (read-only environment). Using Data URI instead:', err);
+      }
     }
 
 
