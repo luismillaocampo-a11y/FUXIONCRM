@@ -709,7 +709,7 @@ class WhatsAppService {
     return null;
   }
 
-  public async sendMessageToPhone(phone: string, text: string) {
+  public async sendMessageToPhone(phone: string, text: string, mediaUrl?: string) {
     if (!text || !text.toString().trim()) throw new Error('Message text is required');
     const jid = this.getWhatsappJid(phone);
     if (!this.socket) {
@@ -717,6 +717,12 @@ class WhatsAppService {
     }
     if (!this.socket || this.status !== 'connected') {
       throw new Error('WhatsApp socket is not connected or authenticated');
+    }
+    if (mediaUrl) {
+      return this.socket.sendMessage(jid, {
+        image: { url: mediaUrl },
+        caption: text.toString().trim()
+      });
     }
     return this.socket.sendMessage(jid, { text: text.toString().trim() });
   }

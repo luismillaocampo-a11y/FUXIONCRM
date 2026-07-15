@@ -7,7 +7,21 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const list = await db.getBroadcasts();
-    return NextResponse.json(list);
+    const parsedList = list.map((b: any) => {
+      let msg = b.message || '';
+      let mediaUrl = '';
+      const mediaMatch = msg.match(/\n\[media:(.*?)\]$/);
+      if (mediaMatch) {
+        mediaUrl = mediaMatch[1];
+        msg = msg.replace(/\n\[media:(.*?)\]$/, '');
+      }
+      return {
+        ...b,
+        message: msg,
+        mediaUrl: mediaUrl || null
+      };
+    });
+    return NextResponse.json(parsedList);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
   }
@@ -16,11 +30,13 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, message, targetsType, targetValues } = body;
+    const { name, message, targetsType, targetValues, mediaUrl } = body;
 
     if (!name || !message || !targetsType) {
       return NextResponse.json({ error: 'Faltan parámetros obligatorios (name, message, targetsType)' }, { status: 400 });
     }
+
+    const dbMessage = mediaUrl ? message + `\n[media:${mediaUrl}]` : message;
 
     // 1. Obtener los leads que coincidan con el target
     const allLeads = await db.getLeads();
@@ -50,7 +66,7 @@ export async function POST(request: Request) {
     const broadcastRecord = await db.saveBroadcast({
       id: broadcastId,
       name,
-      message,
+      message: dbMessage,
       targets: targetsList,
       status: 'sending',
       sent_count: 0,
@@ -78,6 +94,13 @@ async function runBroadcastInBackground(broadcastId: string, targets: string[], 
   // Cargar nombre e historial de la base de datos
   const broadcast = await db.getBroadcastById(broadcastId);
   const name = broadcast?.name || 'Campaña';
+  let dbMsg = broadcast?.message || message;
+  let mediaUrl = undefined;
+  const mediaMatch = dbMsg.match(/\n\[media:(.*?)\]$/);
+  if (mediaMatch) {
+    mediaUrl = mediaMatch[1];
+    dbMsg = dbMsg.replace(/\n\[media:(.*?)\]$/, '');
+  }
 
   for (let i = 0; i < targets.length; i++) {
     const leadId = targets[i];
@@ -91,10 +114,10 @@ async function runBroadcastInBackground(broadcastId: string, targets: string[], 
       console.log(`[Broadcast ${broadcastId}] Enviando mensaje a ${lead.name} (+${lead.phone}) (${i + 1}/${targets.length})...`);
       
       // Enviar mensaje real dinámicamente (Meta, Evolution o Baileys)
-      await sendWhatsAppMessageDynamic(lead.phone, message);
+      await sendWhatsAppMessageDynamic(lead.phone, dbMsg, mediaUrl);
       
       // Registrar mensaje en el chat del lead para mantener el historial
-      await db.addMessage(leadId, 'agent', message);
+      await db.addMessage(leadId, 'agent', mediaUrl ? `${dbMsg}\n\n📎 Imagen adjunta: ${mediaUrl}` : dbMsg);
       
       sent++;
     } catch (err) {
@@ -103,10 +126,11 @@ async function runBroadcastInBackground(broadcastId: string, targets: string[], 
     }
 
     // Actualizar progreso en la base de datos
+    const dbMessageProgress = mediaUrl ? dbMsg + `\n[media:${mediaUrl}]` : dbMsg;
     await db.saveBroadcast({
       id: broadcastId,
       name,
-      message,
+      message: dbMessageProgress,
       targets,
       status: i === targets.length - 1 ? 'completed' : 'sending',
       sent_count: sent,

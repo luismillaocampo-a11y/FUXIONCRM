@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Megaphone, Plus, Users, Send, AlertTriangle, 
-  CheckCircle2, RefreshCw, Clock, MessageSquare, ListFilter, Play, Loader2
+  CheckCircle2, RefreshCw, Clock, MessageSquare, ListFilter, Play, Loader2,
+  Image, X
 } from 'lucide-react';
 
 export default function BroadcastPage() {
@@ -27,6 +28,10 @@ export default function BroadcastPage() {
   // Modales de Confirmación y Alerta
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState<string | null>(null);
+
+  // Estados de Imagen y Vista Previa
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const fetchLeadsAndBroadcasts = useCallback(async () => {
     try {
@@ -109,6 +114,36 @@ export default function BroadcastPage() {
     );
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        setImageUrl(data.url);
+      } else {
+        throw new Error(data.error || 'Error al subir la imagen');
+      }
+    } catch (err: any) {
+      console.error('[BroadcastPage] Error uploading image:', err);
+      setErrorMsg(err.message || 'Error al subir la imagen a la campaña.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !message.trim()) return;
@@ -132,7 +167,8 @@ export default function BroadcastPage() {
       name: name.trim(),
       message: message.trim(),
       targetsType,
-      targetValues: targetsType === 'status' ? selectedStatuses : targetsType === 'tags' ? selectedTags : []
+      targetValues: targetsType === 'status' ? selectedStatuses : targetsType === 'tags' ? selectedTags : [],
+      mediaUrl: imageUrl || undefined
     };
 
     try {
@@ -148,6 +184,7 @@ export default function BroadcastPage() {
         setMessage('');
         setSelectedStatuses([]);
         setSelectedTags([]);
+        setImageUrl(null);
         fetchLeadsAndBroadcasts();
       } else {
         throw new Error(data.error || 'Error al iniciar broadcast');
@@ -325,6 +362,47 @@ export default function BroadcastPage() {
                   </div>
                 </div>
 
+                {/* Imagen de Campaña */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Imagen de Campaña (Opcional)</label>
+                  <div className="flex gap-3 items-center">
+                    <label className="flex-1 flex flex-col items-center justify-center border border-dashed border-slate-800 hover:border-emerald-500/40 bg-slate-900/40 rounded-2xl p-4 cursor-pointer text-center group transition">
+                      {uploadingImage ? (
+                        <div className="flex items-center gap-2 py-2">
+                          <Loader2 className="h-4 w-4 text-emerald-450 animate-spin" />
+                          <span className="text-[10px] text-slate-500">Subiendo imagen...</span>
+                        </div>
+                      ) : imageUrl ? (
+                        <div className="relative w-full flex justify-center py-1">
+                          <img src={imageUrl} alt="Adjunto" className="max-h-24 rounded-lg object-contain" />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setImageUrl(null);
+                            }}
+                            className="absolute top-0 right-2 p-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-full transition shadow-lg"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-2">
+                          <Image className="h-5 w-5 text-slate-500 group-hover:text-emerald-450 transition mb-1" />
+                          <span className="text-[10px] font-semibold text-slate-400">Seleccionar o soltar imagen</span>
+                          <span className="text-[8px] text-slate-600 mt-0.5">PNG, JPG, WEBP (Máx. 5MB)</span>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 {/* Redacción de Mensaje */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Mensaje de WhatsApp</label>
@@ -361,6 +439,38 @@ export default function BroadcastPage() {
                 </button>
 
               </form>
+            </div>
+
+            {/* Vista Previa de WhatsApp */}
+            <div className="bg-[#0b141a] border border-[#202c33]/40 p-5 rounded-3xl shadow-xl relative overflow-hidden bg-repeat" style={{ backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')", backgroundSize: '400px' }}>
+              <div className="absolute inset-0 bg-[#0b141a]/92 z-0"></div>
+              
+              <div className="relative z-10 space-y-3">
+                <h4 className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block border-b border-[#202c33]/80 pb-2">Vista Previa de WhatsApp</h4>
+                
+                <div className="flex justify-end">
+                  {/* Globo de mensaje saliente estilo WhatsApp */}
+                  <div className="max-w-[90%] bg-[#002f27] rounded-2xl rounded-tr-none px-3.5 py-2.5 text-white shadow relative border-t border-[#005c4b]/30">
+                    {/* Rabillo de WhatsApp */}
+                    <div className="absolute top-0 -right-1 w-2.5 h-2.5 bg-[#002f27]" style={{ clipPath: 'polygon(0 0, 0% 100%, 100% 0)' }}></div>
+                    
+                    {imageUrl && (
+                      <div className="mb-2 rounded-lg overflow-hidden border border-[#005c4b]/30 bg-[#002f27]/30 max-h-48 flex items-center justify-center">
+                        <img src={imageUrl} alt="Adjunto" className="w-full h-full object-contain max-h-48 rounded" />
+                      </div>
+                    )}
+                    
+                    <p className="text-xs leading-relaxed whitespace-pre-wrap select-text break-all">
+                      {message || <span className="text-slate-500 italic">Escribe un mensaje para previsualizar...</span>}
+                    </p>
+                    
+                    <div className="flex items-center justify-end gap-1 mt-1.5 text-[8px] text-emerald-300">
+                      <span>{new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                      <svg viewBox="0 0 16 11" width="13" height="13" className="fill-current text-[#53bdeb]"><path d="M15.01 3.3L8.07 10.24a.25.25 0 01-.35 0L5.3 7.82a.25.25 0 010-.35l.85-.85a.25.25 0 01.35 0L7.9 8l5.9-5.9a.25.25 0 01.35 0l.85.85a.25.25 0 010 .35zM9 3.3L8.07 4.24a.25.25 0 01-.35 0L7.18 3.7a.25.25 0 00-.35 0l-.85.85a.25.25 0 000 .35l1.62 1.62a.25.25 0 00.35 0l1.9-1.9a.25.25 0 000-.35l-.85-.85a.25.25 0 00-.35 0z"></path></svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -451,6 +561,11 @@ export default function BroadcastPage() {
             <p className="text-xs text-slate-300 leading-relaxed">
               Estás a punto de iniciar la campaña de difusión masiva <strong className="text-white">"${name}"</strong> para <strong className="text-emerald-400 font-semibold">${getFilteredTargetCount()} contacto(s)</strong>.
             </p>
+            {imageUrl && (
+              <div className="rounded-xl overflow-hidden border border-slate-800 bg-slate-950/40 p-1.5 flex justify-center">
+                <img src={imageUrl} alt="Confirmación" className="max-h-32 object-contain rounded" />
+              </div>
+            )}
             
             <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 text-[10px] text-slate-400 leading-relaxed space-y-1">
               <p className="text-amber-400 font-medium">⚠️ Recomendación de Seguridad:</p>

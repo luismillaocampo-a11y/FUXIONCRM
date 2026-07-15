@@ -8,7 +8,7 @@ import { whatsappService } from './whatsapp-service';
  * 2. Evolution API (Open Source) -> If an external URL is configured (non-Meta)
  * 3. Local Baileys connection (QR code) -> Default fallback if no external API is configured
  */
-export async function sendWhatsAppMessageDynamic(phone: string, text: string): Promise<{ success: boolean; api: 'meta' | 'evolution' | 'baileys' }> {
+export async function sendWhatsAppMessageDynamic(phone: string, text: string, mediaUrl?: string): Promise<{ success: boolean; api: 'meta' | 'evolution' | 'baileys' }> {
   if (!text || !text.toString().trim()) {
     throw new Error('Message text is required');
   }
@@ -31,10 +31,18 @@ export async function sendWhatsAppMessageDynamic(phone: string, text: string): P
 
     if (isMeta) {
       // 1. META OFFICIAL CLOUD API
-      // 'instance' represents the Phone Number ID in this case
       const endpoint = `${cleanUrl}/v20.0/${instance}/messages`;
       
-      const payload = {
+      const payload = mediaUrl ? {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanPhone,
+        type: 'image',
+        image: {
+          link: mediaUrl,
+          caption: text.toString().trim()
+        }
+      } : {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
         to: cleanPhone,
@@ -64,10 +72,16 @@ export async function sendWhatsAppMessageDynamic(phone: string, text: string): P
       return { success: true, api: 'meta' };
     } else {
       // 2. EVOLUTION API (BAILEYS-BASED EXTERNAL GATEWAY)
-      // 'instance' represents the Evolution API instance name
-      const endpoint = `${cleanUrl}/message/sendText/${instance}`;
+      const endpoint = mediaUrl 
+        ? `${cleanUrl}/message/sendMedia/${instance}` 
+        : `${cleanUrl}/message/sendText/${instance}`;
       
-      const payload = {
+      const payload = mediaUrl ? {
+        number: cleanPhone,
+        caption: text.toString().trim(),
+        media: mediaUrl,
+        mediatype: 'image'
+      } : {
         number: cleanPhone,
         text: text.toString().trim()
       };
@@ -93,7 +107,7 @@ export async function sendWhatsAppMessageDynamic(phone: string, text: string): P
   } else {
     // 3. LOCAL BAILEYS CONNECTION (DEFAULT FALLBACK)
     await whatsappService.initialize();
-    await whatsappService.sendMessageToPhone(phone, text);
+    await whatsappService.sendMessageToPhone(phone, text, mediaUrl);
     console.log(`[whatsapp-sender] Sent message to ${phone} via local Baileys service`);
     return { success: true, api: 'baileys' };
   }
