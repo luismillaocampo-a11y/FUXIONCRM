@@ -154,19 +154,25 @@ function CRMDashboard() {
     }
 
     // Si es la misma conversación y aumentó el número de mensajes (llegó o se envió uno nuevo)
-    if (chatMessages.length > prevMessagesCountRef.current) {
-      const lastMessage = chatMessages[chatMessages.length - 1];
-      const isSentByUs = lastMessage?.sender === 'agent' || lastMessage?.sender === 'bot';
-      
-      // Tolerancia de 180px antes de agregar el nuevo mensaje
-      const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 180;
+    const diff = chatMessages.length - prevMessagesCountRef.current;
+    if (diff > 0) {
+      if (diff <= 2) {
+        const lastMessage = chatMessages[chatMessages.length - 1];
+        const isSentByUs = lastMessage?.sender === 'agent' || lastMessage?.sender === 'bot';
+        
+        // Tolerancia de 180px antes de agregar el nuevo mensaje
+        const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 180;
 
-      if (isSentByUs || isAtBottom || forceScrollToBottomRef.current) {
-        forceScrollToBottomRef.current = false;
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: 'smooth' // Solo scroll suave cuando llega un mensaje nuevo al chat activo
-        });
+        if (isSentByUs || isAtBottom || forceScrollToBottomRef.current) {
+          forceScrollToBottomRef.current = false;
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'smooth' // Solo scroll suave cuando llega un mensaje nuevo al chat activo
+          });
+        }
+      } else {
+        // Carga masiva de mensajes tras fetch: scroll instantáneo sin animación
+        container.scrollTop = container.scrollHeight;
       }
     }
 
@@ -602,6 +608,7 @@ function CRMDashboard() {
     const leadId = selectedLead.id;
     setNewMessageAlert(false);
     setChatTab('chat');
+    setChatMessages([]); // Limpiar mensajes anteriores de inmediato
     fetchMessages(leadId);
     fetchNotes(leadId);
     fetchReminders(leadId);
