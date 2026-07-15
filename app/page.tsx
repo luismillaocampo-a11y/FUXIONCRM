@@ -2,7 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+
+const KanbanView = dynamic(() => import('@/components/dashboard/KanbanView'));
 import { 
   Plus, MessageSquare, RefreshCw, List, LayoutGrid
 } from 'lucide-react';
@@ -43,9 +46,22 @@ function getAssociatedIds(lead: any): string[] {
   return Array.from(ids);
 }
 
-export default function CRMDashboard() {
+function CRMDashboard() {
   // Pestaña Activa
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'gaps' | 'kb'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'kanban' | 'gaps' | 'kb'>('dashboard');
+  
+  const searchParams = useSearchParams();
+  const tabQuery = searchParams.get('tab');
+  
+  useEffect(() => {
+    if (tabQuery === 'kanban') {
+      setActiveTab('kanban');
+    } else if (tabQuery === 'leads') {
+      setActiveTab('leads');
+    } else if (tabQuery === 'dashboard') {
+      setActiveTab('dashboard');
+    }
+  }, [tabQuery]);
   
   // Datos
   const [leads, setLeads] = useState<any[]>([]);
@@ -974,7 +990,7 @@ export default function CRMDashboard() {
           <div className="h-4 w-px bg-slate-800"></div>
           {/* Navegación por Pestañas */}
           <div className="flex gap-1">
-            {(['dashboard', 'leads', 'gaps', 'kb'] as const).map((tab) => (
+            {(['dashboard', 'leads', 'kanban', 'gaps', 'kb'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -984,7 +1000,7 @@ export default function CRMDashboard() {
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {tab === 'dashboard' ? 'Dashboard' : tab === 'kb' ? 'Biblioteca RAG' : tab === 'gaps' ? 'Dudas de IA' : 'Bandeja de Clientes'}
+                {tab === 'dashboard' ? 'Dashboard' : tab === 'kb' ? 'Biblioteca RAG' : tab === 'gaps' ? 'Dudas de IA' : tab === 'kanban' ? 'Embudo Kanban' : 'Bandeja de Clientes'}
                 {tab === 'gaps' && gaps.filter(g => g.status === 'pending').length > 0 && (
                   <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500 text-slate-950">
                     {gaps.filter(g => g.status === 'pending').length}
@@ -1149,7 +1165,29 @@ export default function CRMDashboard() {
             handleDeleteKB={handleDeleteKB}
           />
         )}
+
+        {activeTab === 'kanban' && (
+          <KanbanView
+            leads={leads}
+            filteredLeads={filteredLeads}
+            selectedLead={selectedLead}
+            handleSelectLead={handleSelectLead}
+            handleStatusChange={handleStatusChange}
+            leadsSearch={leadsSearch}
+            setLeadsSearch={setLeadsSearch}
+            leadsFilter={leadsFilter}
+            setLeadsFilter={setLeadsFilter}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-slate-500">Cargando CRM...</div>}>
+      <CRMDashboard />
+    </React.Suspense>
   );
 }

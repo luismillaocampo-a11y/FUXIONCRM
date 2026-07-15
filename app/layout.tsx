@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import React, { Suspense } from 'react';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
 import { db } from '@/lib/db';
@@ -21,7 +22,9 @@ export default async function RootLayout({
       <body className="h-full flex overflow-hidden antialiased text-slate-100 select-none">
         <div className="flex h-full w-full">
           {/* Dashboard Sidebar */}
-          <Sidebar />
+          <Suspense fallback={<div className="w-64 bg-[#0c0f1d] border-r border-slate-800 shrink-0" />}>
+            <Sidebar />
+          </Suspense>
 
           {/* Main Display Viewport */}
           <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#090b11]">

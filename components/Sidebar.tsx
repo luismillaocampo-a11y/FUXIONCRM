@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   LayoutDashboard, GitFork, MessageSquare, Activity,
   Bot, BotOff, AlertTriangle, CheckCircle2, Loader2, Megaphone, Settings, LogOut
@@ -10,6 +10,8 @@ import {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get('tab');
 
   // --- Global AI toggle state ---
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null); // null = loading
@@ -19,7 +21,8 @@ export default function Sidebar() {
   const [manualLeadsCount, setManualLeadsCount] = useState(0);
 
   const links = [
-    { href: '/', label: 'Panel de Clientes', icon: LayoutDashboard },
+    { href: '/?tab=leads', label: 'Bandeja de Entrada', icon: MessageSquare },
+    { href: '/?tab=kanban', label: 'Embudo Kanban', icon: LayoutDashboard },
     { href: '/flows', label: 'Creador de Flujos', icon: GitFork },
     { href: '/broadcast', label: 'Mensajes Masivos', icon: Megaphone },
     { href: '/whatsapp', label: 'Conexión WhatsApp', icon: MessageSquare },
@@ -154,7 +157,12 @@ export default function Sidebar() {
       <nav className="flex-1 px-4 py-6 space-y-1">
         {links.map((link) => {
           const Icon = link.icon;
-          const isActive = pathname === link.href;
+          let isActive = pathname === link.href;
+          if (link.href.startsWith('/?')) {
+            const linkParams = new URLSearchParams(link.href.split('?')[1]);
+            const linkTab = linkParams.get('tab');
+            isActive = pathname === '/' && currentTab === linkTab;
+          }
           return (
             <Link
               key={link.href}
