@@ -44,3 +44,7 @@ next-env.d.ts
 .env*
 /whatsapp_auth
 /db.sqlite
+/db.sqlite-shm
+/db.sqlite-wal
+/ADMIN_ONLY_GENERATOR
+

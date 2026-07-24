@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual Oficial de Usuario y Guía de Inicio Rápido - Nutraflow CRM</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background-color: #07090e !important;
+      color: #cbd5e1 !important;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    .container {
+      max-width: 850px;
+      margin: 0 auto;
+    }
+    .card {
+      background-color: #0c0f1d !important;
+      border: 1px solid #1e293b !important;
+      border-radius: 20px;
+      padding: 32px;
+      margin-bottom: 32px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .title-primary {
+      color: #10b981 !important;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 12px;
+      letter-spacing: 1px;
+    }
+    .h1-title {
+      color: #ffffff !important;
+      font-size: 28px;
+      font-weight: 800;
+      margin: 8px 0 0 0;
+    }
+    .h2-title {
+      color: #ffffff !important;
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 16px 0;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .badge {
+      background-color: rgba(16, 185, 129, 0.15) !important;
+      color: #34d399 !important;
+      border: 1px solid rgba(16, 185, 129, 0.3) !important;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      display: inline-block;
+    }
+    .inner-box {
+      background-color: #14192b !important;
+      border: 1px solid #1e293b !important;
+      border-radius: 14px;
+      padding: 20px;
+      margin-top: 16px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .btn-print {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #10b981, #0d9488) !important;
+      color: #ffffff !important;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+      z-index: 999;
+    }
+    @media print {
+      body {
+        padding: 0 !important;
+        background-color: #07090e !important;
+        color: #cbd5e1 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      .card {
+        background-color: #0c0f1d !important;
+        border: 1px solid #1e293b !important;
+        color: #ffffff !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Botón Flotante para Imprimir -->
+  <div class="no-print">
+    <button onclick="window.print()" class="btn-print">
+      📄 GUARDAR / IMPRIMIR EN PDF
+    </button>
+  </div>
+
+  <div class="container">
+    <!-- PORTADA EJECUTIVA -->
+    <div class="card" style="min-height: 80vh; display: flex; flex-direction: column; justify-content: space-between;">
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 20px;">
+          <div>
+            <span class="title-primary">Automatizacion Profesional</span>
+            <div class="h1-title">Manual Oficial del Usuario</div>
+          </div>
+          <span class="badge">Versión 2026 Comercial</span>
+        </div>
+
+        <div style="margin-top: 60px;">
+          <h2 style="font-size: 36px; color: #ffffff; line-height: 1.2; margin-bottom: 16px;">
+            Guía Completa de Instalación, Configuración e Inteligencia Artificial
+          </h2>
+          <p style="font-size: 14px; color: #94a3b8; line-height: 1.6; max-width: 600px;">
+            Aprende a conectar tus canales de ventas de WhatsApp, Instagram Direct y Facebook Messenger, entrenar tu Bot de Inteligencia Artificial con Gemini y gestionar tu embudo comercial.
+          </p>
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid #1e293b; pt: 20px; padding-top: 20px; display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
+        <div>
+          <span style="display: block; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Desarrollo & Marca Registrada</span>
+          <span style="font-weight: 700; color: #10b981; font-size: 14px;">Desarrollado por L. Milla</span>
+        </div>
+        <div style="text-align: right;">
+          <span style="display: block; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Documento Oficial</span>
+          <span style="font-weight: 600; color: #cbd5e1;">Guía de Inicio Rápido & Licencia</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PÁGINA 2: ÍNDICE DE CAPÍTULOS -->
+    <div class="card page-break">
+      <div class="h2-title">📋 Índice de Capítulos</div>
+      
+      <div class="grid-2">
+        <div class="inner-box">
+          <span class="title-primary">Capítulo 1</span>
+          <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin: 4px 0;">Instalación y Primer Inicio</div>
+          <div style="font-size: 12px; color: #94a3b8;">Requisitos del sistema y cómo abrir la aplicación en tu computadora.</div>
+        </div>
+        <div class="inner-box">
+          <span class="title-primary">Capítulo 2</span>
+          <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin: 4px 0;">Activación de Licencia Comercial</div>
+          <div style="font-size: 12px; color: #94a3b8;">Ingreso del Serial Key (Plan Básico vs PRO) y sellado de empresa.</div>
+        </div>
+        <div class="inner-box">
+          <span class="title-primary">Capítulo 3</span>
+          <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin: 4px 0;">Conexión de WhatsApp (Código QR)</div>
+          <div style="font-size: 12px; color: #94a3b8;">Vinculación rápida en 30 segundos con la cámara de tu celular.</div>
+        </div>
+        <div class="inner-box">
+          <span class="title-primary">Capítulo 4</span>
+          <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin: 4px 0;">Instagram Direct & Facebook Messenger</div>
+          <div style="font-size: 12px; color: #94a3b8;">Configuración de tokens en Meta Developers y recepción multicanal.</div>
+        </div>
+        <div class="inner-box">
+          <span class="title-primary">Capítulo 5</span>
+          <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin: 4px 0;">Entrenamiento del Bot de IA (Gemini)</div>
+          <div style="font-size: 12px; color: #94a3b8;">Creación de reglas de venta, catálogo de productos y directivas.</div>
+        </div>
+        <div class="inner-box">
+          <span class="title-primary">Capítulo 6</span>
+          <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin: 4px 0;">Embudo Kanban & Exportación Excel</div>
+          <div style="font-size: 12px; color: #94a3b8;">Seguimiento de ventas y descarga de reportes en 1-clic.</div>
+        </div>
+        <div class="inner-box">
+          <span class="title-primary">Capítulo 7</span>
+          <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin: 4px 0;">Alertas por Correo SMTP</div>
+          <div style="font-size: 12px; color: #94a3b8;">Avisos de dudas no respondidas (Gaps) y notificaciones al correo.</div>
+        </div>
+        <div class="inner-box">
+          <span class="title-primary">Capítulo 8</span>
+          <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin: 4px 0;">Recomendaciones para Bot 24/7</div>
+          <div style="font-size: 12px; color: #94a3b8;">Configuración de energía en Windows para atención ininterrumpida.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAPÍTULO 1 & 2 -->
+    <div class="card page-break">
+      <div class="h2-title">Capítulo 1: Instalación y Primer Inicio</div>
+      <p style="font-size: 13px; line-height: 1.6;">
+        Para comenzar a utilizar <strong>Nutraflow CRM</strong> en tu negocio, solo necesitas una computadora con Windows 10 o Windows 11 y conexión a internet.
+      </p>
+
+      <div class="inner-box">
+        <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin-bottom: 8px;">Pasos de Instalación:</div>
+        <ol style="margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.8;">
+          <li>Ejecuta el archivo instalador oficial <code>Nutraflow_CRM_Setup.exe</code> proporcionado.</li>
+          <li>Sigue las instrucciones del asistente en pantalla e instala el programa.</li>
+          <li>Haz doble clic sobre el icono de <strong>Nutraflow CRM</strong> en tu escritorio para iniciar.</li>
+        </ol>
+      </div>
+
+      <div style="margin-top: 40px;" class="h2-title">Capítulo 2: Activación de Licencia Comercial</div>
+      <p style="font-size: 13px; line-height: 1.6;">
+        Al abrir el sistema por primera vez, el programa te solicitará el <strong>Serial Key</strong> entregado por tu proveedor (L. Milla) y el <strong>Nombre Oficial de tu Empresa</strong>.
+      </p>
+
+      <div class="grid-2" style="margin-top: 16px;">
+        <div style="background-color: #0a0c16; border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 14px;">
+          <span style="color: #60a5fa; font-weight: 700; font-size: 13px; display: block; margin-bottom: 4px;">🟢 Plan BÁSICO</span>
+          <span style="font-size: 11px; color: #94a3b8;">Incluye Bot de Inteligencia Artificial para WhatsApp, atención multichat y base de conocimientos.</span>
+        </div>
+        <div style="background-color: #0a0c16; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 14px;">
+          <span style="color: #34d399; font-weight: 700; font-size: 13px; display: block; margin-bottom: 4px;">⭐ Plan PRO / PREMIUM</span>
+          <span style="font-size: 11px; color: #94a3b8;">Incluye WhatsApp + Instagram Direct + Facebook Messenger + Exportación a Excel en 1-Clic y Métricas Avanzadas.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAPÍTULO 3 & 4 -->
+    <div class="card page-break">
+      <div class="h2-title">Capítulo 3: Conexión de WhatsApp (Código QR)</div>
+      <p style="font-size: 13px; line-height: 1.6;">
+        Conectar tu línea telefónica a Nutraflow CRM toma menos de 30 segundos usando el código QR.
+      </p>
+
+      <div class="inner-box">
+        <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin-bottom: 8px;">Instrucciones de Vinculación:</div>
+        <ol style="margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.8;">
+          <li>Dirígete a la pestaña <strong>Conexión WhatsApp</strong> en el menú lateral.</li>
+          <li>Haz clic en el botón <code>[ Generar Código QR ]</code>.</li>
+          <li>Abre WhatsApp en tu teléfono celular, ve a <em>Ajustes → Dispositivos Vinculados → Vincular un dispositivo</em>.</li>
+          <li>Apunta la cámara de tu celular al código QR de la pantalla. En 5 segundos dirá <strong>"Conectado"</strong>.</li>
+        </ol>
+      </div>
+
+      <div style="margin-top: 40px;" class="h2-title">Capítulo 4: Instagram Direct & Facebook Messenger</div>
+      <p style="font-size: 13px; line-height: 1.6;">
+        Si cuentas con el <strong>Plan PRO</strong>, podrás recibir y responder mensajes de tus páginas de Facebook e Instagram en la misma bandeja unificada.
+      </p>
+
+      <div class="inner-box">
+        <div style="color: #ffffff; font-weight: 700; font-size: 14px; margin-bottom: 8px;">Pasos de Configuración en Meta:</div>
+        <ol style="margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.8;">
+          <li>Ve a la pestaña <strong>Redes Sociales</strong> en tu CRM y consulta los Webhook URLs asignados.</li>
+          <li>Ingresa a tu cuenta de <em>Meta for Developers</em> y selecciona tu App de Facebook/Instagram.</li>
+          <li>Copia el <strong>Token de Verificación</strong> (<code>nutraflow_instagram_token</code> / <code>nutraflow_facebook_token</code>).</li>
+          <li>Pega tu <strong>Page Access Token</strong> en el CRM y presiona <strong>Guardar Configuración</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- CAPÍTULO 5, 6, 7 & 8 -->
+    <div class="card page-break">
+      <div class="h2-title">Capítulo 5: Entrenamiento del Bot de IA (Gemini)</div>
+      <p style="font-size: 13px; line-height: 1.6;">
+        Tu CRM cuenta con la tecnología de <strong>Google Gemini AI</strong> para atender prospectos, ofrecer tus productos y cerrar ventas en automático.
+      </p>
+
+      <div class="inner-box">
+        <ul style="margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.8;">
+          <li><strong>Reglas de IA</strong>: Define el tono de voz (amable, vendedor, formal), los precios de tus productos y promociones activas.</li>
+          <li><strong>Base de Conocimientos</strong>: Agrega preguntas frecuentes (métodos de pago, envíos, horarios de atención).</li>
+          <li><strong>Directivas de Pausa (Gaps)</strong>: Si la IA no sabe responder una duda específica, pausará la automatización y enviará una alerta para que un asesor humano tome el control.</li>
+        </ul>
+      </div>
+
+      <div style="margin-top: 30px;" class="h2-title">Capítulo 6: Embudo Kanban & Exportación a Excel</div>
+      <p style="font-size: 13px; line-height: 1.6;">
+        Organiza tus oportunidades de venta de forma visual por etapas (*Prospectos, En Negociación, Pagado, Enviado*). En la esquina superior derecha, presiona <code>[ 📊 Exportar a Excel ]</code> para descargar instantáneamente un reporte formateado.
+      </p>
+
+      <div style="margin-top: 30px;" class="h2-title">Capítulo 7 y 8: Alertas SMTP & Operación 24/7</div>
+      <div class="grid-2" style="margin-top: 12px;">
+        <div class="inner-box" style="margin-top: 0;">
+          <div style="color: #ffffff; font-weight: 700; font-size: 13px; margin-bottom: 4px;">Alertas por Correo</div>
+          <div style="font-size: 11px; color: #94a3b8;">Configura tu correo en <em>Ajustes → SMTP</em> para recibir notificaciones automáticas cuando un cliente solicite un pago o ayuda.</div>
+        </div>
+        <div class="inner-box" style="margin-top: 0;">
+          <div style="color: #ffffff; font-weight: 700; font-size: 13px; margin-bottom: 4px;">Recomendación 24/7</div>
+          <div style="font-size: 11px; color: #94a3b8;">En Windows ve a <em>Configuración → Energía → Suspensión: NUNCA</em> para mantener tu bot trabajando 24 horas.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PIE DE PÁGINA FINAL -->
+    <div style="text-align: center; padding-top: 20px; font-size: 12px; color: #64748b; border-top: 1px solid #1e293b;">
+      <div style="font-weight: 700; color: #cbd5e1;">Nutraflow CRM • Sistema de Automatización Comercial Multicanal</div>
+      <div style="margin-top: 4px;">Crédito de Autoría: <strong style="color: #10b981;">Desarrollado por L. Milla</strong> • © 2026 Todos los derechos reservados.</div>
+    </div>
+  </div>
+</body>
+</html>

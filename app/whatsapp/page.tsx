@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
+import ConfirmModal from '@/components/ConfirmModal';
 
 type WhatsAppSession = {
   status: string | null;
@@ -11,6 +12,30 @@ export default function WhatsAppPage() {
   const [session, setSession] = useState<WhatsAppSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+
+  const handleDisconnectSession = async () => {
+    setShowDisconnectModal(false);
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'logout' })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data?.error || data?.message || 'No se pudo desconectar la sesión');
+      }
+      setSession({ status: 'disconnected', qrCode: null });
+      stopAllPolling();
+    } catch (err: any) {
+      setError(err.message || 'Error al desconectar la sesión');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const pollRef = useRef<number | null>(null);
   const keepAliveRef = useRef<number | null>(null);
@@ -141,31 +166,7 @@ export default function WhatsAppPage() {
               {isConnected && (
                 <button
                   type="button"
-                  onClick={async () => {
-                    if (!confirm('¿Estás seguro de que deseas cerrar la sesión de WhatsApp y desconectar el dispositivo?')) return;
-                    setLoading(true);
-                    setError(null);
-                    try {
-                      const closeResponse = await fetch('/api/whatsapp', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'close' })
-                      });
-                      const closeData = await closeResponse.json();
-                      if (!closeResponse.ok || !closeData.success) {
-                        throw new Error(closeData?.error || closeData?.message || 'No se pudo cerrar la sesión');
-                      }
-                      setSession({
-                        status: 'disconnected',
-                        qrCode: null
-                      });
-                      stopAllPolling();
-                    } catch (err: any) {
-                      setError(err.message || 'Error al cerrar sesión');
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
+                  onClick={() => setShowDisconnectModal(true)}
                   disabled={loading}
                   className="inline-flex items-center justify-center rounded-xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -214,6 +215,18 @@ export default function WhatsAppPage() {
           </div>
         </div>
       </div>
+
+      {/* MODAL ESTILIZADO DE CONFIRMACIÓN DE DESCONEXIÓN */}
+      <ConfirmModal
+        isOpen={showDisconnectModal}
+        title="¿Desconectar WhatsApp?"
+        message="¿Estás seguro de que deseas cerrar la sesión de WhatsApp y desconectar este dispositivo? El bot dejará de responder mensajes automáticos hasta que vuelvas a vincular el código QR."
+        confirmText="Desconectar"
+        cancelText="Cancelar"
+        variant="danger"
+        onConfirm={handleDisconnectSession}
+        onCancel={() => setShowDisconnectModal(false)}
+      />
     </div>
   );
 }

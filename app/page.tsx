@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
 const KanbanView = dynamic(() => import('@/components/dashboard/KanbanView'));
+import ConfirmModal from '@/components/ConfirmModal';
 import { 
   Plus, MessageSquare, RefreshCw, List, LayoutGrid
 } from 'lucide-react';
@@ -95,6 +96,21 @@ function CRMDashboard() {
   const [newReminderHours, setNewReminderHours] = useState(24);
   const [leadStats, setLeadStats] = useState<any>({ total: 0, newToday: 0, inNegotiation: 0, converted: 0, conversionRate: 0 });
   const [aiEnabled, setAiEnabled] = useState<boolean>(true);
+
+  // Modal de confirmación customizado
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    variant?: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   const updateWhatsappStatusDebounced = (newStatus: string) => {
     if (newStatus === 'connected' || newStatus === 'open') {
@@ -325,17 +341,26 @@ function CRMDashboard() {
     }
   };
 
-  const handleDeleteNote = async (id: string) => {
-    if (!confirm('¿Seguro de eliminar esta nota?')) return;
-    try {
-      const res = await fetch(`/api/notes?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success && selectedLead) {
-        fetchNotes(selectedLead.id);
+  const handleDeleteNote = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: '¿Eliminar Nota?',
+      message: '¿Estás seguro de que deseas eliminar esta nota del cliente?',
+      confirmText: 'Eliminar Nota',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          const res = await fetch(`/api/notes?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+          const data = await res.json();
+          if (data.success && selectedLead) {
+            fetchNotes(selectedLead.id);
+          }
+        } catch (err) {
+          console.error('Error deleting note:', err);
+        }
       }
-    } catch (err) {
-      console.error('Error deleting note:', err);
-    }
+    });
   };
 
   const fetchReminders = async (leadId: string) => {
@@ -368,17 +393,26 @@ function CRMDashboard() {
     }
   };
 
-  const handleDeleteReminder = async (id: string) => {
-    if (!confirm('¿Seguro de eliminar este recordatorio?')) return;
-    try {
-      const res = await fetch(`/api/reminders?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success && selectedLead) {
-        fetchReminders(selectedLead.id);
+  const handleDeleteReminder = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: '¿Eliminar Recordatorio?',
+      message: '¿Estás seguro de que deseas eliminar este recordatorio programado?',
+      confirmText: 'Eliminar Recordatorio',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          const res = await fetch(`/api/reminders?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+          const data = await res.json();
+          if (data.success && selectedLead) {
+            fetchReminders(selectedLead.id);
+          }
+        } catch (err) {
+          console.error('Error deleting reminder:', err);
+        }
       }
-    } catch (err) {
-      console.error('Error deleting reminder:', err);
-    }
+    });
   };
 
   const calculateScore = (lead: any) => {
@@ -728,70 +762,74 @@ function CRMDashboard() {
     }
   };
 
-  const handleDeleteChat = async () => {
+  const handleDeleteChat = () => {
     if (!selectedLead) return;
-    if (!confirm('¿Estás seguro de que deseas eliminar todo el chat de este cliente?')) return;
-
-    try {
-      setChatLoading(true);
-      console.log('🗑️ Eliminando chat para leadId:', selectedLead.id);
-      const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(selectedLead.id)}`, {
-        method: 'DELETE'
-      });
-
-      const data = await res.json();
-      console.log('📋 Respuesta delete:', data, 'Status:', res.status);
-      
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to delete chat (status: ${res.status})`);
+    setConfirmModal({
+      isOpen: true,
+      title: '¿Vaciar Historial del Chat?',
+      message: `¿Estás seguro de que deseas eliminar permanentemente el historial de conversación con ${selectedLead.name || selectedLead.phone}?`,
+      confirmText: 'Eliminar Chat',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          setChatLoading(true);
+          const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(selectedLead.id)}`, {
+            method: 'DELETE'
+          });
+          const data = await res.json();
+          if (!res.ok || !data?.success) {
+            throw new Error(data?.error || `Failed to delete chat (status: ${res.status})`);
+          }
+          setChatMessages([]);
+          setNewMessageAlert(false);
+          setChatNotice('✅ Chat eliminado. El historial está vacío.');
+          window.setTimeout(() => setChatNotice(null), 5000);
+        } catch (err) {
+          console.error('Error al eliminar chat:', err);
+          setChatNotice('❌ No se pudo eliminar el chat. Intenta de nuevo.');
+          window.setTimeout(() => setChatNotice(null), 5000);
+        } finally {
+          setChatLoading(false);
+        }
       }
-
-      setChatMessages([]);
-      setNewMessageAlert(false);
-      setChatNotice('✅ Chat eliminado. El historial está vacío.');
-      console.log('✅ Chat eliminado exitosamente');
-      window.setTimeout(() => setChatNotice(null), 5000);
-    } catch (err) {
-      console.error('❌ Error al eliminar chat:', err);
-      setChatNotice('❌ No se pudo eliminar el chat. Intenta de nuevo.');
-      window.setTimeout(() => setChatNotice(null), 5000);
-    } finally {
-      setChatLoading(false);
-    }
+    });
   };
 
-  const handleDeleteLead = async () => {
+  const handleDeleteLead = () => {
     if (!selectedLead) return;
-    if (!confirm('¿Estás seguro de que deseas eliminar este cliente y todo su historial de chat?')) return;
-
-    try {
-      setChatLoading(true);
-      console.log('🗑️ Eliminando cliente leadId:', selectedLead.id);
-      const res = await fetch(`/api/leads?leadId=${encodeURIComponent(selectedLead.id)}`, {
-        method: 'DELETE'
-      });
-
-      const data = await res.json();
-      console.log('📋 Respuesta delete lead:', data, 'Status:', res.status);
-      
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to delete lead (status: ${res.status})`);
+    setConfirmModal({
+      isOpen: true,
+      title: '¿Eliminar Contacto / Cliente?',
+      message: `¿Estás seguro de que deseas eliminar a ${selectedLead.name || selectedLead.phone} y todo su historial de la base de datos?`,
+      confirmText: 'Eliminar Cliente',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          setChatLoading(true);
+          const res = await fetch(`/api/leads?leadId=${encodeURIComponent(selectedLead.id)}`, {
+            method: 'DELETE'
+          });
+          const data = await res.json();
+          if (!res.ok || !data?.success) {
+            throw new Error(data?.error || `Failed to delete lead (status: ${res.status})`);
+          }
+          setSelectedLead(null);
+          setChatMessages([]);
+          setNewMessageAlert(false);
+          setChatNotice('✅ Cliente eliminado junto con su historial de chat.');
+          window.setTimeout(() => setChatNotice(null), 5000);
+          fetchData();
+        } catch (err) {
+          console.error('Error al eliminar cliente:', err);
+          setChatNotice('❌ No se pudo eliminar el cliente. Intenta de nuevo.');
+          window.setTimeout(() => setChatNotice(null), 5000);
+        } finally {
+          setChatLoading(false);
+        }
       }
-
-      setSelectedLead(null);
-      setChatMessages([]);
-      setNewMessageAlert(false);
-      setChatNotice('✅ Cliente eliminado junto con su historial de chat.');
-      console.log('✅ Cliente eliminado exitosamente');
-      window.setTimeout(() => setChatNotice(null), 5000);
-      fetchData();
-    } catch (err) {
-      console.error('❌ Error al eliminar cliente:', err);
-      setChatNotice('❌ No se pudo eliminar el cliente. Intenta de nuevo.');
-      window.setTimeout(() => setChatNotice(null), 5000);
-    } finally {
-      setChatLoading(false);
-    }
+    });
   };
 
   // Alternar automatización del Bot
@@ -904,17 +942,26 @@ function CRMDashboard() {
     }
   };
 
-  // Eliminar Recurso
-  const handleDeleteKB = async (id: string) => {
-    if (!confirm('¿Estás seguro de que deseas eliminar este recurso de la biblioteca?')) return;
-    try {
-      await fetch(`/api/knowledge?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE'
-      });
-      fetchData();
-    } catch (err) {
-      console.error('Error eliminando KB:', err);
-    }
+  // Eliminar Recurso de Biblioteca
+  const handleDeleteKB = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: '¿Eliminar Recurso de la Biblioteca?',
+      message: '¿Estás seguro de que deseas eliminar este recurso de la biblioteca? Esta acción no se puede deshacer.',
+      confirmText: 'Eliminar Recurso',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          await fetch(`/api/knowledge?id=${encodeURIComponent(id)}`, {
+            method: 'DELETE'
+          });
+          fetchData();
+        } catch (err) {
+          console.error('Error eliminando KB:', err);
+        }
+      }
+    });
   };
 
   // Resolver Duda Pendiente
@@ -954,26 +1001,35 @@ function CRMDashboard() {
   };
 
   // Eliminar/Descartar Duda Pendiente
-  const handleDeleteGap = async (gapId: string) => {
-    if (!confirm('¿Estás seguro de que deseas descartar esta duda? Se eliminará y se reactivará el bot para este cliente.')) return;
-    try {
-      const res = await fetch(`/api/knowledge/gap?id=${encodeURIComponent(gapId)}`, {
-        method: 'DELETE'
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchData();
-        if (selectedLead) {
-          const updatedLeads = await (await fetch(`/api/leads?_t=${Date.now()}`, { cache: 'no-store' })).json();
-          const freshLead = updatedLeads.find((l: any) => l.id === selectedLead.id);
-          if (freshLead) setSelectedLead(freshLead);
+  const handleDeleteGap = (gapId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: '¿Descartar Duda Pendiente?',
+      message: '¿Estás seguro de que deseas descartar esta duda? Se eliminará y se reactivará el bot de IA para este cliente.',
+      confirmText: 'Descartar y Reactivar Bot',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          const res = await fetch(`/api/knowledge/gap?id=${encodeURIComponent(gapId)}`, {
+            method: 'DELETE'
+          });
+          const data = await res.json();
+          if (data.success) {
+            fetchData();
+            if (selectedLead) {
+              const updatedLeads = await (await fetch(`/api/leads?_t=${Date.now()}`, { cache: 'no-store' })).json();
+              const freshLead = updatedLeads.find((l: any) => l.id === selectedLead.id);
+              if (freshLead) setSelectedLead(freshLead);
+            }
+          } else {
+            alert(data.error || 'Error al descartar la duda');
+          }
+        } catch (err) {
+          console.error('Error al descartar duda:', err);
         }
-      } else {
-        alert(data.error || 'Error al descartar la duda');
       }
-    } catch (err) {
-      console.error('Error al descartar duda:', err);
-    }
+    });
   };
 
   // Traducir estados para la visualización del usuario
@@ -1001,16 +1057,17 @@ function CRMDashboard() {
       lead.phone?.includes(leadsSearch);
     
     if (leadsFilter === 'Todos') return matchesSearch;
-    
-    // Mapeo inverso de filtros de español a inglés de base de datos
-    let dbStatus = leadsFilter;
-    if (leadsFilter === 'Nuevo') dbStatus = 'New';
-    else if (leadsFilter === 'Interactuando') dbStatus = 'Engaged';
-    else if (leadsFilter === 'Verificación Pendiente') dbStatus = 'Pending Verification';
-    else if (leadsFilter === 'Venta Confirmada') dbStatus = 'Converted';
-    // Por Registrar en Web: se guarda igual en BD
+    if (leadsFilter === 'WhatsApp') {
+      return matchesSearch && (!lead.channel || lead.channel === 'whatsapp' || (!lead.id?.startsWith('ig_') && !lead.id?.startsWith('fb_')));
+    }
+    if (leadsFilter === 'Instagram') {
+      return matchesSearch && (lead.channel === 'instagram' || lead.id?.startsWith('ig_') || lead.phone?.startsWith('ig_'));
+    }
+    if (leadsFilter === 'Facebook') {
+      return matchesSearch && (lead.channel === 'facebook' || lead.id?.startsWith('fb_') || lead.phone?.startsWith('fb_'));
+    }
 
-    return matchesSearch && lead.status === dbStatus;
+    return matchesSearch;
   });
 
   return (
@@ -1219,6 +1276,17 @@ function CRMDashboard() {
           />
         )}
       </div>
+
+      {/* Modal de Confirmación Estilizado */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        variant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
   LayoutDashboard, GitFork, MessageSquare, Activity,
-  Bot, BotOff, AlertTriangle, CheckCircle2, Loader2, Megaphone, Settings, LogOut
+  Bot, BotOff, AlertTriangle, CheckCircle2, Loader2, Megaphone, Settings, LogOut, Share2
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -26,15 +26,24 @@ export default function Sidebar() {
     { href: '/flows', label: 'Creador de Flujos', icon: GitFork },
     { href: '/broadcast', label: 'Mensajes Masivos', icon: Megaphone },
     { href: '/whatsapp', label: 'Conexión WhatsApp', icon: MessageSquare },
+    { href: '/social', label: 'Conexión Redes Sociales', icon: Share2 },
     { href: '/settings', label: 'Configuración', icon: Settings }
   ];
 
-  // Fetch global AI setting and manual leads count
+  // --- Branding State ---
+  const [branding, setBranding] = useState({
+    companyName: 'Fuxion Flow',
+    logoUrl: '',
+    vendorCredit: 'Desarrollado por L. Milla'
+  });
+
+  // Fetch global AI setting, manual leads count and branding
   const fetchStatus = useCallback(async () => {
     try {
-      const [settingsRes, leadsRes] = await Promise.all([
+      const [settingsRes, leadsRes, brandingRes] = await Promise.all([
         fetch('/api/settings', { cache: 'no-store' }),
-        fetch('/api/leads', { cache: 'no-store' })
+        fetch('/api/leads', { cache: 'no-store' }),
+        fetch('/api/settings/branding', { cache: 'no-store' })
       ]);
 
       if (settingsRes.ok) {
@@ -48,6 +57,15 @@ export default function Sidebar() {
           const manualCount = leadsData.filter((l: any) => l.bot_active === false || l.bot_active === 0).length;
           setManualLeadsCount(manualCount);
         }
+      }
+
+      if (brandingRes.ok) {
+        const brandingData = await brandingRes.json();
+        setBranding({
+          companyName: brandingData.companyName || 'Fuxion Flow',
+          logoUrl: brandingData.logoUrl || '',
+          vendorCredit: 'Desarrollado por L. Milla'
+        });
       }
     } catch (err) {
       console.error('[Sidebar] Error fetching status:', err);
@@ -142,14 +160,26 @@ export default function Sidebar() {
 
   return (
     <aside className="w-64 border-r border-slate-800 bg-[#0c0f1d] flex flex-col h-full shrink-0">
-      {/* Cabecera de la Marca */}
-      <div className="h-16 flex items-center px-6 border-b border-slate-800 gap-2.5">
-        <div className="p-1.5 bg-emerald-500/10 rounded-lg text-emerald-400">
-          <Activity className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="font-semibold text-white tracking-tight">Fuxion Flow</h1>
-          <p className="text-[10px] text-emerald-400 font-medium tracking-wider uppercase">Automatización CRM</p>
+      {/* Cabecera de la Marca Personalizable */}
+      <div className="h-16 flex items-center px-5 border-b border-slate-800 gap-3">
+        {branding.logoUrl ? (
+          <img 
+            src={branding.logoUrl} 
+            alt="Logo" 
+            className="w-9 h-9 rounded-xl object-contain bg-slate-900/80 p-1 border border-slate-800" 
+          />
+        ) : (
+          <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20 shrink-0">
+            <Activity className="h-5 w-5" />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <h1 className="font-bold text-sm text-white tracking-tight truncate" title={branding.companyName}>
+            {branding.companyName}
+          </h1>
+          <p className="text-[10px] text-emerald-400 font-semibold tracking-wide uppercase truncate">
+            Desarrollado por L. Milla
+          </p>
         </div>
       </div>
 

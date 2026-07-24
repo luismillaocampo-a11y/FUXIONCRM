@@ -250,6 +250,26 @@ function AlertAgentNode({ data }: any) {
   );
 }
 
+// 10. NODO ACCIÓN DE IA (GEMINI PROMPT OVERRIDE)
+function AiActionNode({ data }: any) {
+  return (
+    <div className="bg-[#1a1528] border border-violet-500/50 rounded-xl p-4 w-60 shadow-lg text-slate-200">
+      <Handle type="target" position={Position.Top} id="input" />
+      <div className="flex items-center justify-between border-b border-violet-500/20 pb-2 mb-2">
+        <span className="text-xs font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1">
+          🤖 Acción de IA
+        </span>
+        <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-mono font-bold">Gemini</span>
+      </div>
+      <p className="text-[10px] text-slate-400 font-semibold mb-1">Instrucción / Prompt:</p>
+      <p className="text-xs text-slate-300 bg-slate-950/70 p-2 rounded-lg italic line-clamp-3 border border-slate-900">
+        {data.prompt || 'Responder dudas usando la Base de Conocimientos...'}
+      </p>
+      <Handle type="source" position={Position.Bottom} id="output" />
+    </div>
+  );
+}
+
 // Mapeo de tipos de nodo
 const nodeTypes = {
   trigger: TriggerNode,
@@ -260,7 +280,8 @@ const nodeTypes = {
   waitDelay: WaitDelayNode,
   coupon: CouponNode,
   updateStatus: UpdateStatusNode,
-  alertAgent: AlertAgentNode
+  alertAgent: AlertAgentNode,
+  aiAction: AiActionNode
 };
 
 // Componente auxiliar para evitar pérdida de cursor y scroll en áreas de texto controladas
@@ -301,7 +322,7 @@ function ControlledTextArea({
 }
 
 function FlowBuilder() {
-  const { getViewport } = useReactFlow();
+  const { getViewport, screenToFlowPosition } = useReactFlow();
 
   // Muted Light Mode state observer
   const [isLightMode, setIsLightMode] = useState(false);
@@ -331,6 +352,7 @@ function FlowBuilder() {
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
   const [flowName, setFlowName] = useState('Flujo de Ventas FUXION CRM');
   const [saveLoading, setSaveLoading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const messageTextareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -419,7 +441,7 @@ function FlowBuilder() {
   };
 
   // Crear nodo en el canvas
-  const addNodeToCanvas = (type: 'trigger' | 'message' | 'buttons' | 'logicJump' | 'deliveryEngine' | 'waitDelay' | 'coupon' | 'updateStatus' | 'alertAgent') => {
+  const addNodeToCanvas = (type: 'trigger' | 'message' | 'buttons' | 'logicJump' | 'deliveryEngine' | 'waitDelay' | 'coupon' | 'updateStatus' | 'alertAgent' | 'aiAction') => {
     const id = `node-${Date.now()}`;
     let label = '';
     let initialData: any = {};
@@ -461,15 +483,39 @@ function FlowBuilder() {
         label = 'Alerta al Agente';
         initialData = { message: '⚠️ Un cliente en WhatsApp requiere atención manual sobre Thermo T3 / Prunex1.' };
         break;
+      case 'aiAction':
+        label = 'Acción de IA (Gemini)';
+        initialData = { prompt: 'Actúa como un Asesor Nutricional experto de Fuxion Perú. Saluda con empatía, consulta el malestar principal del cliente y recomiéndale Prunex 1 o Thermo T3 usando la Base de Conocimientos (máximo 35 palabras).' };
+        break;
     }
 
-    const { x: viewX, y: viewY, zoom } = getViewport();
-    const width = typeof window !== 'undefined' ? window.innerWidth : 1024;
-    const height = typeof window !== 'undefined' ? window.innerHeight : 768;
+    let posX = 250;
+    let posY = 200;
 
-    // Desplazar al centro de la pantalla actual del usuario
-    const posX = (-viewX + (width / 2) - 120) / zoom;
-    const posY = (-viewY + (height / 2) - 60) / zoom;
+    if (typeof window !== 'undefined') {
+      try {
+        if (screenToFlowPosition) {
+          const center = screenToFlowPosition({
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 2
+          });
+          posX = center.x - 120;
+          posY = center.y - 60;
+        } else {
+          const { x: viewX, y: viewY, zoom } = getViewport();
+          const width = window.innerWidth || 1024;
+          const height = window.innerHeight || 768;
+          posX = (-viewX + (width / 2) - 120) / zoom;
+          posY = (-viewY + (height / 2) - 60) / zoom;
+        }
+      } catch (err) {
+        const { x: viewX, y: viewY, zoom } = getViewport();
+        const width = typeof window !== 'undefined' ? window.innerWidth : 1024;
+        const height = typeof window !== 'undefined' ? window.innerHeight : 768;
+        posX = (-viewX + (width / 2) - 120) / (zoom || 1);
+        posY = (-viewY + (height / 2) - 60) / (zoom || 1);
+      }
+    }
 
     const newNode = {
       id,
@@ -493,8 +539,9 @@ function FlowBuilder() {
   // Guardar flujo en BD
   const handleSaveFlow = async (makeActive?: boolean) => {
     setSaveLoading(true);
-    const flowId = activeFlowId || `flow-${Date.now()}`;
+    setSaveError(null);
     try {
+      const flowId = activeFlowId || `flow-${Date.now()}`;
       const res = await fetch('/api/flows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -520,11 +567,11 @@ function FlowBuilder() {
           setShowSaveSuccess(false);
         }, 3000);
       } else {
-        alert(data.error || 'Error al guardar el flujo');
+        setSaveError(data.error || 'Error al guardar el flujo');
       }
     } catch (err) {
       console.error(err);
-      alert('La petición falló.');
+      setSaveError('La petición falló.');
     } finally {
       setSaveLoading(false);
     }
@@ -726,6 +773,21 @@ function FlowBuilder() {
         setCurrentNodeId(null);
       }
     }
+
+    // 9. NODO ACCIÓN DE IA (GEMINI PROMPT OVERRIDE)
+    else if (node.type === 'aiAction') {
+      setSimMessages(prev => [...prev, {
+        sender: 'bot',
+        text: `🤖 [IA Gemini]: "¡Hola! Con mucho gusto te asesoro. Para combatir la pesadez digestiva de forma natural, te recomiendo el Prunex 1 de Fuxion. ¿Te gustaría coordinar el envío a tu dirección hoy mismo?"`
+      }]);
+
+      const edge = edges.find(e => e.source === node.id);
+      if (edge) {
+        setTimeout(() => executeSimulationStep(edge.target), 1200);
+      } else {
+        setCurrentNodeId(null);
+      }
+    }
   };
 
   // Recibir texto del cliente en simulador
@@ -873,6 +935,12 @@ function FlowBuilder() {
         stroke = isLightMode ? '#ef4444' : 'rgba(239, 68, 68, 0.4)';
         icon = '🔔';
         title = 'Alerta';
+        break;
+      case 'aiAction':
+        bg = isLightMode ? '#f3e8ff' : '#1a1528';
+        stroke = isLightMode ? '#8b5cf6' : 'rgba(139, 92, 246, 0.4)';
+        icon = '🤖';
+        title = 'Acción IA';
         break;
     }
 
@@ -1145,6 +1213,14 @@ function FlowBuilder() {
               >
                 <span className="text-base">🔘</span>
                 Botones
+              </button>
+
+              <button
+                onClick={() => addNodeToCanvas('aiAction')}
+                className="flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 rounded-lg transition font-semibold"
+              >
+                <span className="text-base">🤖</span>
+                Acción de IA (Gemini)
               </button>
 
               <button
@@ -1464,6 +1540,31 @@ function FlowBuilder() {
                     placeholder="Ej. El cliente tiene dudas con el pago de su Thermo T3."
                     className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-red-500/50 font-sans leading-relaxed"
                   />
+                </div>
+              </div>
+            )}
+
+            {/* CONFIGURACIÓN ACCIÓN DE IA */}
+            {selectedNode.type === 'aiAction' && (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
+                    🤖 Prompt de IA Personalizado
+                  </label>
+                  <p className="text-[10px] text-slate-400">Instrucciones específicas que seguirá Gemini únicamente en este paso del flujo.</p>
+                  <ControlledTextArea
+                    rows={8}
+                    value={selectedNode.data.prompt || ''}
+                    onChange={(val) => updateNodeData({ prompt: val })}
+                    placeholder="Ej. Actúa como asesor comercial, saluda y recomienda Prunex 1..."
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-violet-500/50 font-sans leading-relaxed"
+                  />
+                </div>
+                <div className="p-3 bg-violet-950/20 border border-violet-500/20 rounded-lg text-xs space-y-1.5 text-slate-300">
+                  <p className="font-semibold text-violet-300">💡 Tip de Uso</p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Este nodo pausará las respuestas rígidas y le dará a Gemini el control temporal con estas instrucciones antes de continuar al siguiente nodo del flujo.
+                  </p>
                 </div>
               </div>
             )}

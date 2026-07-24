@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import AnalyticsView from './AnalyticsView';
 import { 
   Users, Award, Clock, DollarSign, TrendingUp, CheckCircle2
 } from 'lucide-react';
@@ -347,6 +348,9 @@ export default function DashboardView({
         </div>
 
       </div>
+
+      {/* SECCIÓN DE ANALÍTICA AVANZADA Y EXPORTACIÓN EXCEL */}
+      <AnalyticsView leads={leads} leadStats={leadStats} />
     </div>
   );
 }

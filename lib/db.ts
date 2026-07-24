@@ -46,6 +46,13 @@ function getSqliteDb() {
   const dbPath = path.join(/* turbopackIgnore: true */ process.cwd(), 'db.sqlite');
   sqliteDb = new DatabaseClass(dbPath);
 
+  try {
+    sqliteDb.pragma('journal_mode = WAL');
+    sqliteDb.pragma('synchronous = NORMAL');
+  } catch (pErr) {
+    // Ignore pragma warning if WAL is restricted
+  }
+
   // Initialize tables in SQLite if they don't exist
   sqliteDb.exec(`
     CREATE TABLE IF NOT EXISTS leads (
@@ -53,6 +60,8 @@ function getSqliteDb() {
       name TEXT,
       phone TEXT UNIQUE NOT NULL,
       whatsapp_lid TEXT,
+      channel TEXT DEFAULT 'whatsapp',
+      avatar_url TEXT,
       status TEXT NOT NULL DEFAULT 'New',
       tags TEXT NOT NULL DEFAULT '[]',
       bot_active INTEGER NOT NULL DEFAULT 1,
@@ -187,10 +196,84 @@ function getSqliteDb() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );`);
     try {
+      sqliteDb.exec("ALTER TABLE leads ADD COLUMN channel TEXT DEFAULT 'whatsapp';");
+    } catch (e) {}
+    try {
+      sqliteDb.exec("ALTER TABLE leads ADD COLUMN avatar_url TEXT;");
+    } catch (e) {}
+
+    try {
       sqliteDb.exec('ALTER TABLE users ADD COLUMN name TEXT DEFAULT "";');
     } catch (e) {}
     try {
       sqliteDb.exec('ALTER TABLE users ADD COLUMN avatar_url TEXT DEFAULT "";');
+    } catch (e) {}
+
+    sqliteDb.exec(`CREATE TABLE IF NOT EXISTS ai_rules (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      instruction TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'General',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );`);
+
+    const rulesCount = sqliteDb.prepare('SELECT count(*) as count FROM ai_rules').get() as { count: number };
+    if (rulesCount.count === 0) {
+      const defaultRules = [
+        {
+          id: 'rule-1',
+          title: 'Concisión Extrema (Máximo 35 palabras)',
+          instruction: 'Responde en un solo párrafo corto de máximo 35 palabras, optimizado para ser leído al instante en celular.',
+          category: 'Tono y Estilo'
+        },
+        {
+          id: 'rule-2',
+          title: 'Cierre con 1 Solo Producto',
+          instruction: 'Jamás abrumes recomendando múltiples productos de golpe. Recomienda 1 solo producto estrella según la necesidad expresada.',
+          category: 'Reglas de Venta'
+        },
+        {
+          id: 'rule-3',
+          title: 'Lenguaje Médico y Legal Seguro',
+          instruction: 'Prohibido diagnosticar o decir que un producto "cura" enfermedades. Usa conectores seguros como "apoya a", "ayuda a", "contribuye a".',
+          category: 'Restricciones'
+        },
+        {
+          id: 'rule-4',
+          title: 'Promoción 4x1 Únicamente a Petición',
+          instruction: 'NO menciones puntos ni promociones por iniciativa propia. Solo si el cliente pregunta por ofertas, menciona que por la compra de 4 cajas regalamos 1 caja GRATIS.',
+          category: 'Promociones'
+        },
+        {
+          id: 'rule-5',
+          title: 'Canales de Pago Autorizados',
+          instruction: 'Los métodos de pago habilitados son Yape, Plin y Transferencia bancaria. (Modifica esta regla en Configuración para indicar tu número y titular).',
+          category: 'Logística y Pagos'
+        }
+      ];
+
+      const stmt = sqliteDb.prepare('INSERT INTO ai_rules (id, title, instruction, category, is_active) VALUES (?, ?, ?, ?, 1)');
+      for (const r of defaultRules) {
+        stmt.run(r.id, r.title, r.instruction, r.category);
+      }
+    }
+
+    try {
+      sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);');
+      sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_chat_messages_lead ON chat_messages(lead_id);');
+      sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);');
+      sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_ai_rules_active ON ai_rules(is_active);');
+    } catch (idxErr) {
+      console.warn('SQLite Index Init Warning:', idxErr);
+    }
+
+    try {
+      const setSettingStmt = sqliteDb.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
+      setSettingStmt.run('client_company_name', 'Fuxion Flow');
+      setSettingStmt.run('vendor_brand_credit', 'Desarrollado por L. Milla');
+      setSettingStmt.run('client_logo_url', '');
+      setSettingStmt.run('company_name_locked', 'true');
     } catch (e) {}
 
 
@@ -1520,6 +1603,63 @@ export const db = {
     const db = getSqliteDb();
     const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
     return row || null;
+  },
+
+  async getAIRules(): Promise<any[]> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('ai_rules').select('*').order('created_at', { ascending: true }));
+      if (res && !res.error && res.data) return res.data;
+    }
+
+    const db = getSqliteDb();
+    const rows = db.prepare('SELECT * FROM ai_rules ORDER BY created_at ASC').all();
+    return (rows || []).map((r: any) => ({
+      ...r,
+      is_active: Boolean(r.is_active)
+    }));
+  },
+
+  async addAIRule(rule: { id?: string; title: string; instruction: string; category?: string }): Promise<any> {
+    const id = rule.id || `rule-${Date.now()}`;
+    const category = rule.category || 'General';
+
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('ai_rules').insert({
+        id,
+        title: rule.title,
+        instruction: rule.instruction,
+        category,
+        is_active: true
+      }).select().single());
+      if (res && !res.error) return res.data;
+    }
+
+    const db = getSqliteDb();
+    db.prepare('INSERT INTO ai_rules (id, title, instruction, category, is_active) VALUES (?, ?, ?, ?, 1)')
+      .run(id, rule.title, rule.instruction, category);
+    return { id, title: rule.title, instruction: rule.instruction, category, is_active: true };
+  },
+
+  async toggleAIRule(id: string, isActive: boolean): Promise<any> {
+    const activeVal = isActive ? 1 : 0;
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('ai_rules').update({ is_active: isActive }).eq('id', id).select().single());
+      if (res && !res.error) return res.data;
+    }
+
+    const db = getSqliteDb();
+    db.prepare('UPDATE ai_rules SET is_active = ? WHERE id = ?').run(activeVal, id);
+    return { id, is_active: isActive };
+  },
+
+  async deleteAIRule(id: string): Promise<boolean> {
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('ai_rules').delete().eq('id', id));
+    }
+
+    const db = getSqliteDb();
+    db.prepare('DELETE FROM ai_rules WHERE id = ?').run(id);
+    return true;
   }
 };
 

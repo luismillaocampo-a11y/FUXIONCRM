@@ -1,70 +1,77 @@
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
-
-const smtpHost = process.env.SMTP_HOST || '';
-const smtpPort = parseInt(process.env.SMTP_PORT || '587');
-const smtpUser = process.env.SMTP_USER || '';
-const smtpPass = process.env.SMTP_PASS || '';
-const smtpFrom = process.env.SMTP_FROM || 'alerts@fuxionflow.com';
-const adminEmail = process.env.ADMIN_EMAIL || 'admin@fuxionflow.com';
-
-const hasSmtpConfig = Boolean(smtpHost && smtpUser && smtpPass);
+import { db } from '@/lib/db';
 
 /**
- * Sends an email notification to the administrator.
- * If SMTP configuration is missing, it will log the email to process console
- * and write to a local log file inside the workspace for review.
+ * Obtiene dinámicamente las credenciales SMTP de la base de datos local (o variables de entorno como respaldo)
+ */
+async function getSmtpConfig() {
+  const host = (await db.getSystemSetting('smtp_host')) || process.env.SMTP_HOST || '';
+  const port = parseInt((await db.getSystemSetting('smtp_port')) || process.env.SMTP_PORT || '587');
+  const user = (await db.getSystemSetting('smtp_user')) || process.env.SMTP_USER || '';
+  const pass = (await db.getSystemSetting('smtp_pass')) || process.env.SMTP_PASS || '';
+  const from = (await db.getSystemSetting('smtp_from')) || process.env.SMTP_FROM || `"Alertas CRM" <${user || 'alertas@nutraflow.com'}>`;
+  const adminEmail = (await db.getSystemSetting('admin_email')) || process.env.ADMIN_EMAIL || user || 'admin@nutraflow.com';
+
+  const hasConfig = Boolean(host && user && pass);
+
+  return { host, port, user, pass, from, adminEmail, hasConfig };
+}
+
+/**
+ * Envía una notificación por correo electrónico al administrador.
  */
 export async function sendEmailNotification(subject: string, bodyText: string, htmlContent?: string) {
   const timestamp = new Date().toISOString();
-  console.log(`[Notification Alert] Subject: "${subject}"`);
+  console.log(`[Notification Alert] Intentando enviar correo: "${subject}"`);
 
-  if (hasSmtpConfig) {
+  const config = await getSmtpConfig();
+
+  if (config.hasConfig) {
     try {
       const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpPort === 465, // true for 465, false for others
+        host: config.host,
+        port: config.port,
+        secure: config.port === 465, // true para puerto 465 (SSL), false para 587 (TLS)
         auth: {
-          user: smtpUser,
-          pass: smtpPass
+          user: config.user,
+          pass: config.pass
         }
       });
 
       const info = await transporter.sendMail({
-        from: smtpFrom,
-        to: adminEmail,
+        from: config.from,
+        to: config.adminEmail,
         subject: subject,
         text: bodyText,
         html: htmlContent || bodyText.replace(/\n/g, '<br>')
       });
 
-      console.log(`[Notification Alert] SMTP email sent successfully. Msg ID: ${info.messageId}`);
+      console.log(`[Notification Alert] Correo enviado exitosamente vía SMTP. ID: ${info.messageId}`);
       return { success: true, messageId: info.messageId };
-    } catch (error) {
-      console.error('[Notification Alert] SMTP email dispatch failed:', error);
-      // Fallback to local logs on failure
+    } catch (error: any) {
+      console.error('[Notification Alert] Error al despachar correo por SMTP:', error);
+      // Caer en modo simulación de respaldo si falla el servidor
     }
   }
 
-  // SIMULATION MODE
-  // Create a log directory inside process workspace if not exist (only if writable)
+  // MODO SIMULACIÓN DE RESPALDO
   const logsDir = path.join(process.cwd(), 'scratch');
   try {
     if (!fs.existsSync(logsDir)) {
       fs.mkdirSync(logsDir, { recursive: true });
     }
   } catch (err) {
-    console.warn('Skipping scratch directory creation (read-only environment):', err);
+    console.warn('Saltando creación de directorio scratch:', err);
   }
 
   const logFilePath = path.join(logsDir, 'email_logs.txt');
   const emailLogEntry = `
 ========================================
 TIMESTAMP: ${timestamp}
-TO: ${adminEmail}
-FROM: ${smtpFrom} (SIMULATED)
+TO: ${config.adminEmail}
+FROM: ${config.from} (SIMULADO)
 SUBJECT: ${subject}
 ----------------------------------------
 BODY:
@@ -74,72 +81,73 @@ ${bodyText}
 
   try {
     fs.appendFileSync(logFilePath, emailLogEntry, 'utf-8');
-    console.log(`[Notification Alert] Simulated email appended to: ${logFilePath}`);
+    console.log(`[Notification Alert] Correo simulado guardado en: ${logFilePath}`);
   } catch (error) {
-    console.error('[Notification Alert] Failed to write simulated email log:', error);
+    console.error('[Notification Alert] Error al escribir en el registro de simulación:', error);
   }
 
   return { success: true, simulated: true, logPath: logFilePath };
 }
 
 /**
- * Specific alert for Payment Verification
+ * Alerta específica para Verificación de Pagos
  */
 export async function alertPaymentVerification(lead: { name: string; phone: string; status: string }) {
-  const subject = `⚠️ PAYMENT VERIFICATION REQUIRED: ${lead.name}`;
+  const companyName = (await db.getSystemSetting('client_company_name')) || 'Fuxion Flow';
+  const subject = `⚠️ VERIFICACIÓN DE PAGO REQUERIDA: ${lead.name}`;
   const text = `
-Dear Admin,
+Estimado Administrador,
 
-A customer is ready for payment verification.
+Un cliente ha enviado su información para verificación de pago.
 
-Lead Details:
-- Name: ${lead.name}
-- Phone: ${lead.phone}
-- Status: ${lead.status}
+Detalles del Cliente:
+- Nombre: ${lead.name}
+- Celular: ${lead.phone}
+- Estado: ${lead.status}
 
-Please review the payment details in the Fuxion Flow CRM Dashboard and confirm the transaction.
+Por favor, revisa el comprobante en la Bandeja de Mensajes de tu CRM y confirma la transacción.
 
-Best regards,
-Fuxion Flow Automation Bot
+Saludos cordiales,
+Bot Inteligente ${companyName}
 `;
 
   return sendEmailNotification(subject, text);
 }
 
 /**
- * Specific alert for Shadow Mode (Knowledge Gap)
+ * Alerta específica para Dudas No Respondidas de la IA (Knowledge Gaps)
  */
 export async function alertKnowledgeGap(lead: { name: string; phone: string }, question: string) {
-  const subject = `🚨 KNOWLEDGE GAP DETECTED: Chat paused for ${lead.name}`;
+  const companyName = (await db.getSystemSetting('client_company_name')) || 'Fuxion Flow';
+  const subject = `🚨 DUDA NO RESPONDIDA: Chat pausado para ${lead.name}`;
   const text = `
-Dear Admin,
+Estimado Administrador,
 
-A customer asked a question that the AI bot could not answer based on the knowledge base.
-The bot has been PAUSED (Shadow Mode active) for this customer.
+Un cliente realizó una consulta que la Inteligencia Artificial no pudo responder con la base de conocimientos actual.
+La atención automática ha sido PAUSADA para este cliente.
 
-Lead Details:
-- Name: ${lead.name}
-- Phone: ${lead.phone}
+Detalles del Cliente:
+- Nombre: ${lead.name}
+- Celular: ${lead.phone}
 
-Unanswered Question:
+Pregunta Realizada:
 "${question}"
 
-Action Required:
-Go to the CRM Dashboard under "Knowledge Gaps", provide the answer, and reactivate the bot.
+Acción Requerida:
+Ingresa al CRM bajo la pestaña "Dudas Pendientes", proporciona la respuesta oficial y reactiva el bot.
 
-Best regards,
-Fuxion Flow Automation Bot
+Saludos cordiales,
+Bot Inteligente ${companyName}
 `;
 
   return sendEmailNotification(subject, text);
 }
 
 /**
- * Sends a WhatsApp message to the administrator via Evolution API.
- * Falls back to console log if Evolution API is not configured.
+ * Envía un mensaje de alerta por WhatsApp al administrador
  */
 export async function sendWhatsAppToAdmin(message: string): Promise<void> {
-  const adminPhone = '51955252932'; // Luis Milla
+  const adminPhone = process.env.ADMIN_PHONE || process.env.WHATSAPP_ADMIN_NUMBER || '';
   const evolutionUrl = process.env.EVOLUTION_API_URL;
   const evolutionKey = process.env.EVOLUTION_API_KEY;
   const evolutionInstance = process.env.EVOLUTION_API_INSTANCE;
@@ -157,27 +165,23 @@ export async function sendWhatsAppToAdmin(message: string): Promise<void> {
       });
       if (!res.ok) {
         const err = await res.text();
-        console.error(`[sendWhatsAppToAdmin] Evolution API error: ${res.status} - ${err}`);
+        console.error(`[sendWhatsAppToAdmin] Error Evolution API: ${res.status} - ${err}`);
       } else {
-        console.log(`[sendWhatsAppToAdmin] ✅ WhatsApp alert sent to admin (${adminPhone})`);
+        console.log(`[sendWhatsAppToAdmin] ✅ Alerta WhatsApp enviada al admin (${adminPhone})`);
       }
     } catch (err) {
-      console.error('[sendWhatsAppToAdmin] Failed to send WhatsApp alert to admin:', err);
+      console.error('[sendWhatsAppToAdmin] Fallo al enviar alerta WhatsApp al admin:', err);
     }
   } else {
-    // Fallback: log to console and simulation file
-    console.warn('[sendWhatsAppToAdmin] Evolution API not configured. Admin WhatsApp alert (SIMULATED):');
-    console.warn(message);
-    // Also write to email log as fallback
     await sendEmailNotification(
-      '🚨 NUEVO CLIENTE POR REGISTRAR - Alerta WhatsApp (Simulada)',
+      '🚨 NUEVO CLIENTE POR REGISTRAR - Alerta CRM',
       message
     );
   }
 }
 
 /**
- * Alert for new client registration — sends WhatsApp to admin with client data.
+ * Alerta para registro oficial de cliente
  */
 export async function alertRegistration(data: {
   nombre: string;
@@ -189,22 +193,20 @@ export async function alertRegistration(data: {
 }): Promise<void> {
   const crmLink = data.crmBaseUrl
     ? `${data.crmBaseUrl}/?lead=${encodeURIComponent(data.leadId)}`
-    : `https://tu-crm.vercel.app/?lead=${encodeURIComponent(data.leadId)}`;
+    : `https://tu-crm.com/?lead=${encodeURIComponent(data.leadId)}`;
 
   const message =
 `🚨 ¡NUEVO CLIENTE POR REGISTRAR! 🚨
-El bot ha pausado la conversación porque el cliente aceptó el registro oficial. Ingresa a la web de Fuxion, inicia el registro manual y llámalo de inmediato.
+El bot ha pausado la conversación porque el cliente solicitó el registro oficial.
 
 📋 Datos del Cliente:
+- Nombre: ${data.nombre}
+- DNI: ${data.dni}
+- Celular: ${data.celular}
+- Correo: ${data.correo}
 
-Nombre: ${data.nombre}
-DNI: ${data.dni}
-Celular: ${data.celular}
-Correo: ${data.correo}
-
-🔗 Link directo a la conversación en el CRM:
+🔗 Enlace directo al chat en el CRM:
 ${crmLink}`;
 
   await sendWhatsAppToAdmin(message);
 }
-

@@ -18,8 +18,8 @@ export default async function RootLayout({
   const mode = await db.getSystemSetting('appearance_mode') || 'dark';
 
   return (
-    <html lang="en" className={`h-full bg-[#090b11] theme-${accent} ${mode}`}>
-      <body className="h-full flex overflow-hidden antialiased text-slate-100 select-none">
+    <html lang="en" suppressHydrationWarning className={`h-full bg-[#090b11] theme-${accent} ${mode}`}>
+      <body suppressHydrationWarning className="h-full flex overflow-hidden antialiased text-slate-100 select-none">
         <div className="flex h-full w-full">
           {/* Dashboard Sidebar */}
           <Suspense fallback={<div className="w-64 bg-[#0c0f1d] border-r border-slate-800 shrink-0" />}>

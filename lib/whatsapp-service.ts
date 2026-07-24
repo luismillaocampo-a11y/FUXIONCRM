@@ -215,7 +215,7 @@ class WhatsAppService {
                 const hasSentPaymentDetails = recentMsgs.slice(-5).some(m => {
                   if (m.sender !== 'bot' && m.sender !== 'agent') return false;
                   const msgLower = m.message.toLowerCase();
-                  return msgLower.includes('955252932') || msgLower.includes('yape') || msgLower.includes('plin') || msgLower.includes('transferenci');
+                  return msgLower.includes('yape') || msgLower.includes('plin') || msgLower.includes('transferenci') || msgLower.includes('banco') || msgLower.includes('cuenta') || msgLower.includes('comprobante');
                 });
 
                 if (hasSentPaymentDetails) {

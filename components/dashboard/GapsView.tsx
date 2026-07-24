@@ -89,17 +89,17 @@ export default function GapsView({
                 <button
                   onClick={() => handleResolveGap(gap.id)}
                   disabled={!gapAnswers[gap.id]?.trim() || resolvingGapId === gap.id}
-                  className="mt-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-600 text-white transition-all"
+                  className="mt-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-600 text-white transition-all shadow-lg shadow-emerald-950/20"
                 >
                   {resolvingGapId === gap.id ? (
                     <>
                       <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      Guardando y Reactivando Bot...
+                      Enviando a WhatsApp y Entrenando IA...
                     </>
                   ) : (
                     <>
                       <UserCheck className="h-3.5 w-3.5" />
-                      Guardar Respuesta y Reactivar Bot
+                      Enviar Respuesta a WhatsApp, Guardar en RAG y Reactivar Bot
                     </>
                   )}
                 </button>

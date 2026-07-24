@@ -4,10 +4,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Settings, Key, Mail, Bot, Save, RefreshCw, CheckCircle, AlertTriangle, 
   MessageSquare, ToggleLeft, ToggleRight, Info, ShieldCheck, User, Lock, 
-  Palette, Grid, Upload, ChevronRight, BookOpen
+  Palette, Grid, Upload, ChevronRight, BookOpen, Plus, Trash2, Sparkles, 
+  Layers, X, Check
 } from 'lucide-react';
 
-type SectionType = 'overview' | 'profile' | 'security' | 'appearance' | 'whatsapp' | 'ai' | 'smtp' | 'system';
+type SectionType = 'overview' | 'profile' | 'security' | 'appearance' | 'whatsapp' | 'ai' | 'smtp' | 'system' | 'branding';
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SectionType>('overview');
@@ -17,6 +18,103 @@ export default function SettingsPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Branding States
+  const [brandingCompanyName, setBrandingCompanyName] = useState('Fuxion Flow');
+  const [brandingLogoUrl, setBrandingLogoUrl] = useState('');
+  const [savingBranding, setSavingBranding] = useState(false);
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Verificar si es una imagen
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('Por favor selecciona un archivo de imagen válido (.png, .jpg, .svg)');
+      setTimeout(() => setErrorMsg(null), 3000);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setBrandingLogoUrl(dataUrl);
+        setSuccessMsg('¡Logo cargado desde tu equipo! Recuerda presionar Guardar Marca.');
+        setTimeout(() => setSuccessMsg(null), 3000);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // SMTP Test State
+  const [testingEmail, setTestingEmail] = useState(false);
+
+  const handleTestEmail = async () => {
+    setTestingEmail(true);
+    setSuccessMsg(null);
+    setErrorMsg(null);
+
+    try {
+      // Guardar configuraciones de forma silenciosa antes de probar
+      await handleSubmit(undefined, { silent: true });
+
+      const res = await fetch('/api/settings/test-email', { method: 'POST' });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setSuccessMsg(data.message);
+        setTimeout(() => setSuccessMsg(null), 10000);
+      } else {
+        setErrorMsg(data.error || 'Error al enviar el correo de prueba');
+        setTimeout(() => setErrorMsg(null), 10000);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error al conectar con el servidor de prueba');
+      setTimeout(() => setErrorMsg(null), 10000);
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
+  const fetchBranding = async () => {
+    try {
+      const res = await fetch('/api/settings/branding');
+      const data = await res.json();
+      if (data.companyName) setBrandingCompanyName(data.companyName);
+      if (data.logoUrl) setBrandingLogoUrl(data.logoUrl);
+    } catch (e) {
+      console.error('Error fetching branding:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchBranding();
+  }, []);
+
+  const handleSaveBranding = async () => {
+    setSavingBranding(true);
+    try {
+      const res = await fetch('/api/settings/branding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyName: brandingCompanyName,
+          logoUrl: brandingLogoUrl
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccessMsg('¡Configuración de Marca y Logo actualizada correctamente!');
+        setTimeout(() => setSuccessMsg(null), 3000);
+      }
+    } catch (e) {
+      console.error('Error saving branding:', e);
+    } finally {
+      setSavingBranding(false);
+    }
+  };
 
   // Appearance Local Settings (to show change updates in real-time)
   const [selectedMode, setSelectedMode] = useState<'light' | 'dark'>('dark');
@@ -42,6 +140,84 @@ export default function SettingsPage() {
     appearance_mode: 'dark',
     appearance_accent: 'emerald'
   });
+
+  // AI Behavior Rules State
+  const [aiRules, setAiRules] = useState<Array<{ id: string; title: string; instruction: string; category: string; is_active: boolean }>>([]);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [showAddRuleModal, setShowAddRuleModal] = useState(false);
+  const [newRuleTitle, setNewRuleTitle] = useState('');
+  const [newRuleInstruction, setNewRuleInstruction] = useState('');
+  const [newRuleCategory, setNewRuleCategory] = useState('Tono y Estilo');
+  const [selectedRuleCategoryFilter, setSelectedRuleCategoryFilter] = useState('Todas');
+
+  const fetchAIRules = async () => {
+    setRulesLoading(true);
+    try {
+      const res = await fetch('/api/settings/ai-rules');
+      const data = await res.json();
+      if (data.success && data.rules) {
+        setAiRules(data.rules);
+      }
+    } catch (err) {
+      console.error('Error fetching AI rules:', err);
+    } finally {
+      setRulesLoading(false);
+    }
+  };
+
+  const handleCreateRule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRuleTitle.trim() || !newRuleInstruction.trim()) return;
+
+    try {
+      const res = await fetch('/api/settings/ai-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newRuleTitle.trim(),
+          instruction: newRuleInstruction.trim(),
+          category: newRuleCategory
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.rule) {
+        setAiRules(prev => [...prev, data.rule]);
+        setNewRuleTitle('');
+        setNewRuleInstruction('');
+        setShowAddRuleModal(false);
+        setSuccessMsg('¡Nueva regla de comportamiento guardada correctamente!');
+        setTimeout(() => setSuccessMsg(null), 3000);
+      }
+    } catch (err) {
+      console.error('Error creating rule:', err);
+    }
+  };
+
+  const handleToggleRuleActive = async (id: string, currentStatus: boolean) => {
+    const nextStatus = !currentStatus;
+    setAiRules(prev => prev.map(r => r.id === id ? { ...r, is_active: nextStatus } : r));
+
+    try {
+      await fetch('/api/settings/ai-rules', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, is_active: nextStatus })
+      });
+    } catch (err) {
+      console.error('Error toggling rule:', err);
+    }
+  };
+
+  const handleDeleteRuleItem = async (id: string) => {
+    setAiRules(prev => prev.filter(r => r.id !== id));
+    try {
+      await fetch(`/api/settings/ai-rules?id=${id}`, { method: 'DELETE' });
+      setSuccessMsg('Regla eliminada.');
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err) {
+      console.error('Error deleting rule:', err);
+    }
+  };
 
   const fetchConfigs = async () => {
     setFetching(true);
@@ -98,6 +274,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchConfigs();
+    fetchAIRules();
   }, []);
 
   const handleInputChange = (key: string, value: string) => {
@@ -155,11 +332,13 @@ export default function SettingsPage() {
     }));
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, options?: { silent?: boolean }) => {
     if (e) e.preventDefault();
     setLoading(true);
-    setSuccessMsg(null);
-    setErrorMsg(null);
+    if (!options?.silent) {
+      setSuccessMsg(null);
+      setErrorMsg(null);
+    }
 
     try {
       const res = await fetch('/api/settings/configs', {
@@ -169,15 +348,19 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccessMsg('Configuraciones guardadas y aplicadas con éxito.');
+        if (!options?.silent) {
+          setSuccessMsg('Configuraciones guardadas y aplicadas con éxito.');
+          window.setTimeout(() => setSuccessMsg(null), 10000);
+        }
         // Apply theme color immediately to browser HTML node
         document.documentElement.className = `h-full bg-[#090b11] theme-${configs.appearance_accent} ${configs.appearance_mode}`;
-        window.setTimeout(() => setSuccessMsg(null), 5000);
       } else {
         throw new Error(data.error || 'Error al guardar');
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error al conectar con la API.');
+      if (!options?.silent) {
+        setErrorMsg(err.message || 'Error al conectar con la API.');
+      }
     } finally {
       setLoading(false);
     }
@@ -265,6 +448,7 @@ export default function SettingsPage() {
             <span className="text-[10px] font-bold text-slate-500 tracking-widest uppercase block pl-3">Espacio de trabajo</span>
             <div className="space-y-1">
               {[
+                { id: 'branding', label: 'Marca & Identidad del Negocio', icon: Sparkles },
                 { id: 'whatsapp', label: 'Conexión de WhatsApp', icon: MessageSquare },
                 { id: 'ai', label: 'Ajustes de IA', icon: Bot },
                 { id: 'smtp', label: 'Servidor de Correo SMTP', icon: Mail },
@@ -298,20 +482,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Right Panel Content */}
-        <div className="flex-1 overflow-y-auto p-8 bg-[#07090e]">
-          
-          {successMsg && (
-            <div className="mb-6 p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-300 text-xs flex gap-3 items-center shadow-[0_4px_20px_rgba(16,185,129,0.05)]">
-              <CheckCircle className="h-4.5 w-4.5 text-emerald-400 flex-shrink-0" />
-              <span className="font-medium">{successMsg}</span>
-            </div>
-          )}
-          {errorMsg && (
-            <div className="mb-6 p-4 rounded-xl border border-rose-500/20 bg-rose-500/5 text-rose-300 text-xs flex gap-3 items-center shadow-[0_4px_20px_rgba(244,63,94,0.05)]">
-              <AlertTriangle className="h-4.5 w-4.5 text-rose-400 flex-shrink-0" />
-              <span className="font-medium">{errorMsg}</span>
-            </div>
-          )}
+        <div className="flex-1 overflow-y-auto p-8 bg-[#07090e] relative">
 
           {fetching ? (
             <div className="py-24 text-center space-y-4">
@@ -374,6 +545,122 @@ export default function SettingsPage() {
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* BRANDING & BUSINESS IDENTITY VIEW */}
+              {activeSection === 'branding' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-base font-bold text-white mb-1">Marca & Identidad del Negocio</h2>
+                    <p className="text-xs text-slate-400">Personaliza el logo de tu empresa para que aparezca en la barra lateral del CRM.</p>
+                  </div>
+
+                  <div className="p-6 bg-[#0f111a] border border-[#1e2330] rounded-xl space-y-6">
+                    {/* Previsualización en Tiempo Real */}
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 block mb-2">Previsualización de tu Cabecera Lateral</label>
+                      <div className="w-64 p-3 bg-[#0c0f1d] border border-slate-800 rounded-xl flex items-center gap-3">
+                        {brandingLogoUrl ? (
+                          <img 
+                            src={brandingLogoUrl} 
+                            alt="Logo" 
+                            className="w-9 h-9 rounded-xl object-contain bg-slate-900 p-1 border border-slate-800" 
+                          />
+                        ) : (
+                          <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20 shrink-0">
+                            <Sparkles className="h-5 w-5" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <h1 className="font-bold text-sm text-white truncate">{brandingCompanyName || 'Tu Empresa'}</h1>
+                          <p className="text-[10px] text-emerald-400 font-semibold tracking-wide uppercase truncate">
+                            Desarrollado por L. Milla
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Formulario */}
+                    <div className="space-y-4 pt-4 border-t border-[#1e2330]">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-medium text-slate-300 block">Nombre de tu Empresa / Negocio</label>
+                          <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold flex items-center gap-1">
+                            <Lock size={10} /> Fijado por Licencia
+                          </span>
+                        </div>
+                        <input 
+                          type="text"
+                          value={brandingCompanyName}
+                          disabled
+                          readOnly
+                          className="w-full px-3 py-2.5 bg-[#12141c] border border-[#232838] rounded-lg text-xs text-slate-400 cursor-not-allowed font-semibold shadow-inner"
+                        />
+                        <span className="text-[10px] text-slate-500 block">El nombre de la empresa queda sellado permanentemente con el serial de la licencia y la placa madre del equipo.</span>
+                      </div>
+
+                      {/* Cargar Logo desde la Computadora (1-Clic) */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-slate-300 block">Logo de tu Empresa / Negocio</label>
+                        
+                        <input
+                          type="file"
+                          ref={logoFileInputRef}
+                          onChange={handleLogoFileUpload}
+                          accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml"
+                          className="hidden"
+                        />
+
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => logoFileInputRef.current?.click()}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs rounded-xl shadow-lg transition"
+                          >
+                            <Upload size={14} />
+                            <span>Subir Logo desde mi Computadora</span>
+                          </button>
+                          
+                          {brandingLogoUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setBrandingLogoUrl('')}
+                              className="text-xs text-rose-400 hover:text-rose-300 font-medium underline"
+                            >
+                              Quitar logo actual
+                            </button>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 block">Formatos recomendados: PNG o JPG con fondo transparente o cuadrado.</span>
+                      </div>
+
+                      {/* Opción Avanzada: URL directa */}
+                      <div className="pt-2">
+                        <details className="text-xs text-slate-500 cursor-pointer">
+                          <summary className="hover:text-slate-400 font-medium mb-2">Opción avanzada (Usar enlace URL externo)</summary>
+                          <input 
+                            type="text"
+                            value={brandingLogoUrl}
+                            onChange={(e) => setBrandingLogoUrl(e.target.value)}
+                            placeholder="https://su-dominio.com/logo.png"
+                            className="w-full px-3 py-2.5 bg-[#161922] border border-[#2a3040] rounded-lg text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono mt-1"
+                          />
+                        </details>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-4 border-t border-[#1e2330]">
+                      <button
+                        onClick={handleSaveBranding}
+                        disabled={savingBranding}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-xs font-bold text-white rounded-lg transition disabled:opacity-50"
+                      >
+                        <Save size={13} />
+                        <span>{savingBranding ? 'Guardando...' : 'Guardar Marca'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -786,6 +1073,101 @@ export default function SettingsPage() {
                       </button>
                     </div>
 
+                    {/* SECCIÓN INTERACTIVA DE REGLAS DE COMPORTAMIENTO (DIRECTIVAS DE IA) */}
+                    <div className="pt-6 border-t border-[#1e2330] space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <Sparkles size={15} className="text-violet-400" />
+                            Directivas & Reglas de Comportamiento de IA
+                          </span>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            Define parámetros dinámicos (instrucciones, tono, límites y reglas de venta) que Gemini acatará en tiempo real sin modificar código.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddRuleModal(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-semibold shadow-md transition"
+                        >
+                          <Plus size={14} />
+                          <span>Agregar Regla</span>
+                        </button>
+                      </div>
+
+                      {/* Filtros de Categoría */}
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {['Todas', 'Tono y Estilo', 'Reglas de Venta', 'Logística y Pagos', 'Promociones', 'Restricciones'].map((cat) => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setSelectedRuleCategoryFilter(cat)}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition ${
+                              selectedRuleCategoryFilter === cat
+                                ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40'
+                                : 'bg-[#161922] text-slate-400 border border-[#2a3040] hover:text-white'
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Lista de Tarjetas de Reglas */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2">
+                        {aiRules
+                          .filter(r => selectedRuleCategoryFilter === 'Todas' || r.category === selectedRuleCategoryFilter)
+                          .map((rule) => (
+                            <div
+                              key={rule.id}
+                              className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between ${
+                                rule.is_active
+                                  ? 'bg-[#161927] border-violet-500/30'
+                                  : 'bg-[#131620]/60 border-[#222838] opacity-60'
+                              }`}
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                    {rule.category || 'General'}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleRuleActive(rule.id, rule.is_active)}
+                                      className={`text-xs font-semibold px-2 py-0.5 rounded transition ${
+                                        rule.is_active
+                                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                          : 'bg-slate-800 text-slate-500 border border-slate-700'
+                                      }`}
+                                    >
+                                      {rule.is_active ? 'ON' : 'OFF'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteRuleItem(rule.id)}
+                                      className="p-1 text-slate-500 hover:text-red-400 transition"
+                                      title="Eliminar regla"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                </div>
+                                <h4 className="text-xs font-bold text-slate-200">{rule.title}</h4>
+                                <p className="text-[11px] text-slate-400 leading-relaxed italic bg-[#0c0e18] p-2 rounded-lg border border-slate-900">
+                                  "{rule.instruction}"
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        {aiRules.length === 0 && (
+                          <div className="col-span-full p-6 text-center bg-[#161922] border border-[#2a3040] rounded-xl text-slate-400 text-xs">
+                            No hay reglas configuradas aún. Haz clic en "Agregar Regla" para añadir la primera directiva.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="flex justify-end pt-4 border-t border-[#1e2330]">
                       <button
                         onClick={() => handleSubmit()}
@@ -801,12 +1183,115 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {/* MODAL PARA AGREGAR NUEVA REGLA DE IA */}
+              {showAddRuleModal && (
+                <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-[#0f111a] border border-[#1e2330] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in duration-200">
+                    <div className="flex items-center justify-between border-b border-[#1e2330] pb-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={18} className="text-violet-400" />
+                        <h3 className="text-sm font-bold text-white">Nueva Regla de IA</h3>
+                      </div>
+                      <button
+                        onClick={() => setShowAddRuleModal(false)}
+                        className="p-1 text-slate-400 hover:text-white rounded-lg transition"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleCreateRule} className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-300 block">Título de la Regla</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ej. Formato Corto de Mensajes"
+                          value={newRuleTitle}
+                          onChange={(e) => setNewRuleTitle(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#161922] border border-[#2a3040] rounded-lg text-xs text-slate-200 focus:outline-none focus:border-violet-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-300 block">Categoría</label>
+                        <select
+                          value={newRuleCategory}
+                          onChange={(e) => setNewRuleCategory(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#161922] border border-[#2a3040] rounded-lg text-xs text-slate-200 focus:outline-none focus:border-violet-500"
+                        >
+                          <option value="Tono y Estilo">Tono y Estilo</option>
+                          <option value="Reglas de Venta">Reglas de Venta</option>
+                          <option value="Logística y Pagos">Logística y Pagos</option>
+                          <option value="Promociones">Promociones</option>
+                          <option value="Restricciones">Restricciones</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-300 block">Instrucción / Parámetro</label>
+                        <textarea
+                          rows={4}
+                          required
+                          placeholder="Ej. Nunca dar listas de ingredientes. Responder en máximo 30 palabras de forma empática."
+                          value={newRuleInstruction}
+                          onChange={(e) => setNewRuleInstruction(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#161922] border border-[#2a3040] rounded-lg text-xs text-slate-200 focus:outline-none focus:border-violet-500 font-sans"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1e2330]">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddRuleModal(false)}
+                          className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-xs font-bold text-white rounded-lg transition shadow-md"
+                        >
+                          Guardar Regla
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
               {/* 7. SMTP VIEW */}
               {activeSection === 'smtp' && (
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-base font-bold text-white mb-1">Servidor SMTP</h2>
                     <p className="text-xs text-slate-400">Configura tus servidores de salida de correo para el envío de alertas automáticas.</p>
+                  </div>
+
+                  {/* TARJETA INFORMATIVA GUÍA SMTP */}
+                  <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-200 text-xs space-y-3 shadow-lg">
+                    <div className="flex items-center gap-2 font-bold text-indigo-300">
+                      <Sparkles className="w-4 h-4 text-indigo-400" />
+                      <span>Guía de Configuración Rápida para Gmail & Correos Corporativos</span>
+                    </div>
+
+                    <div className="space-y-2 text-[11px] text-slate-300 leading-relaxed pl-1">
+                      <p>
+                        <strong className="text-white">1. Si usas Gmail (Recomendado):</strong>
+                      </p>
+                      <ul className="list-disc pl-5 space-y-1 text-slate-300">
+                        <li><strong>Host:</strong> <code className="bg-slate-900 px-1 py-0.5 rounded text-indigo-300">smtp.gmail.com</code> | <strong>Puerto:</strong> <code className="bg-slate-900 px-1 py-0.5 rounded text-indigo-300">587</code></li>
+                        <li><strong>Contraseña SMTP:</strong> Google bloquea las contraseñas normales por seguridad. Debes usar una <strong>Contraseña de Aplicación (16 caracteres)</strong> generada gratis en tu cuenta de Google (<a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-indigo-400 underline font-bold hover:text-indigo-300">myaccount.google.com/apppasswords</a>).</li>
+                      </ul>
+
+                      <p className="pt-1">
+                        <strong className="text-white">2. Si usas Outlook / Hotmail:</strong> Host: <code className="bg-slate-900 px-1 py-0.5 rounded text-indigo-300">smtp.office365.com</code> | Puerto: <code className="bg-slate-900 px-1 py-0.5 rounded text-indigo-300">587</code>
+                      </p>
+
+                      <p className="pt-1">
+                        <strong className="text-white">3. Pruebas en 1 Clic:</strong> Al terminar de llenar tus datos, haz clic en <strong>"🧪 Enviar Correo de Prueba"</strong> para confirmar que recibes la alerta en tu correo.
+                      </p>
+                    </div>
                   </div>
 
                   <div className="p-6 bg-[#0f111a] border border-[#1e2330] rounded-xl space-y-4">
@@ -867,7 +1352,17 @@ export default function SettingsPage() {
                       />
                     </div>
 
-                    <div className="flex justify-end pt-4 border-t border-[#1e2330]">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-[#1e2330]">
+                      <button
+                        type="button"
+                        onClick={handleTestEmail}
+                        disabled={testingEmail || loading}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-[#1c2333] hover:bg-[#252e42] border border-indigo-500/30 text-xs font-bold text-indigo-300 rounded-lg transition disabled:opacity-50"
+                      >
+                        <Mail size={13} className={testingEmail ? 'animate-bounce text-emerald-400' : ''} />
+                        <span>{testingEmail ? 'Enviando Prueba...' : '🧪 Enviar Correo de Prueba'}</span>
+                      </button>
+
                       <button
                         onClick={() => handleSubmit()}
                         disabled={loading}
@@ -929,6 +1424,41 @@ export default function SettingsPage() {
         </div>
 
       </div>
+
+      {/* BANNER FLOTANTE DE NOTIFICACIÓN PROFESIONAL EN EL ESPACIO INFERIOR */}
+      {(successMsg || errorMsg) && (
+        <div className="fixed bottom-6 right-8 z-50 max-w-md w-full animate-in slide-in-from-bottom-5 duration-300">
+          <div className={`p-4 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-start justify-between gap-3 ${
+            successMsg 
+              ? 'bg-[#0c1a15]/95 border-emerald-500/40 text-emerald-200 shadow-emerald-500/10' 
+              : 'bg-[#1f0f16]/95 border-rose-500/40 text-rose-200 shadow-rose-500/10'
+          }`}>
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              {successMsg ? (
+                <CheckCircle className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-bold uppercase tracking-wider mb-0.5">
+                  {successMsg ? 'Operación Exitosa' : 'Aviso del Sistema'}
+                </h4>
+                <p className="text-xs leading-relaxed break-words font-medium text-slate-200">
+                  {successMsg || errorMsg}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => { setSuccessMsg(null); setErrorMsg(null); }}
+              className="p-1 text-slate-400 hover:text-white rounded-lg transition shrink-0 hover:bg-white/10"
+              title="Cerrar notificación"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
