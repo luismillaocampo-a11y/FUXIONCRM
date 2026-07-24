@@ -1277,7 +1277,7 @@ export const db = {
       messages = db.prepare(`SELECT * FROM chat_messages WHERE lead_id IN (${placeholders}) ORDER BY created_at ASC`).all(...ids);
     }
     
-    // Deduplicar mensajes por ID e ignorar mensajes idénticos duplicados por webhook/polling en ventana de 3s
+    // Deduplicar mensajes por ID e ignorar mensajes idénticos duplicados por webhook/polling en ventana de 15s
     const seenIds = new Set<string>();
     const uniqueMessages: any[] = [];
 
@@ -1289,7 +1289,7 @@ export const db = {
         if (prev.sender !== msg.sender || prev.message !== msg.message) return false;
         const t1 = new Date(prev.created_at || 0).getTime();
         const t2 = new Date(msg.created_at || 0).getTime();
-        return Math.abs(t1 - t2) <= 3000;
+        return Math.abs(t1 - t2) <= 15000;
       });
 
       if (!isDuplicateContent) {
@@ -1304,7 +1304,7 @@ export const db = {
     const normalizedId = await this.normalizeLeadId(leadId);
     const id = customId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Filtro anti-duplicados en base de datos: prevenir inserción idéntica en ventana de 5 segundos
+    // Filtro anti-duplicados en base de datos: prevenir inserción idéntica en ventana de 15 segundos
     if (!useSupabase) {
       const db = getSqliteDb();
       const recent = db.prepare(`
@@ -1320,7 +1320,7 @@ export const db = {
           if (!isoStr.endsWith('Z') && !isoStr.match(/[+-]\d{2}:?\d{2}$/)) isoStr += 'Z';
         }
         const diffSec = Math.abs(Date.now() - new Date(isoStr).getTime()) / 1000;
-        if (diffSec <= 5) {
+        if (diffSec <= 15) {
           console.log(`[db.addMessage] 🛡️ Mensaje duplicado interceptado y omitido (${diffSec.toFixed(1)}s): "${message.slice(0, 30)}"`);
           return recent;
         }
