@@ -1276,13 +1276,57 @@ export const db = {
       const placeholders = ids.map(() => '?').join(',');
       messages = db.prepare(`SELECT * FROM chat_messages WHERE lead_id IN (${placeholders}) ORDER BY created_at ASC`).all(...ids);
     }
-    console.log(`[db.getMessages] Búsqueda de mensajes para leadId: ${leadId} (normalizado: ${normalizedId}). IDs asociados: ${JSON.stringify(ids)}. Mensajes encontrados: ${messages.length}`);
-    return messages;
+    
+    // Deduplicar mensajes por ID e ignorar mensajes idénticos duplicados por webhook/polling en ventana de 3s
+    const seenIds = new Set<string>();
+    const uniqueMessages: any[] = [];
+
+    for (const msg of messages) {
+      if (seenIds.has(msg.id)) continue;
+      seenIds.add(msg.id);
+
+      const isDuplicateContent = uniqueMessages.some((prev) => {
+        if (prev.sender !== msg.sender || prev.message !== msg.message) return false;
+        const t1 = new Date(prev.created_at || 0).getTime();
+        const t2 = new Date(msg.created_at || 0).getTime();
+        return Math.abs(t1 - t2) <= 3000;
+      });
+
+      if (!isDuplicateContent) {
+        uniqueMessages.push(msg);
+      }
+    }
+
+    return uniqueMessages;
   },
 
   async addMessage(leadId: string, sender: string, message: string, customId?: string): Promise<any> {
     const normalizedId = await this.normalizeLeadId(leadId);
     const id = customId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Filtro anti-duplicados en base de datos: prevenir inserción idéntica en ventana de 5 segundos
+    if (!useSupabase) {
+      const db = getSqliteDb();
+      const recent = db.prepare(`
+        SELECT * FROM chat_messages 
+        WHERE lead_id = ? AND sender = ? AND message = ? 
+        ORDER BY created_at DESC LIMIT 1
+      `).get(normalizedId, sender, message) as any;
+
+      if (recent && recent.created_at) {
+        let isoStr = recent.created_at;
+        if (typeof isoStr === 'string') {
+          if (!isoStr.includes('T')) isoStr = isoStr.replace(' ', 'T');
+          if (!isoStr.endsWith('Z') && !isoStr.match(/[+-]\d{2}:?\d{2}$/)) isoStr += 'Z';
+        }
+        const diffSec = Math.abs(Date.now() - new Date(isoStr).getTime()) / 1000;
+        if (diffSec <= 5) {
+          console.log(`[db.addMessage] 🛡️ Mensaje duplicado interceptado y omitido (${diffSec.toFixed(1)}s): "${message.slice(0, 30)}"`);
+          return recent;
+        }
+      }
+    }
+
     if (useSupabase) {
       const { data, error } = await getSupabase().from('chat_messages').upsert({
         id,
