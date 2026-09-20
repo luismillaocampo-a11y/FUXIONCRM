@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { hashPassword } from '@/lib/auth-utils';
+import { hashPassword, signToken } from '@/lib/auth-utils';
 import crypto from 'crypto';
 
 export const runtime = 'nodejs';
@@ -40,7 +40,24 @@ export async function POST(request: Request) {
     });
 
     console.log(`[auth/register] User registered successfully: ${normalizedEmail}`);
-    return NextResponse.json({ success: true, message: 'Usuario registrado exitosamente.' });
+
+    const token = signToken({
+      userId,
+      email: normalizedEmail
+    }, 315360000);
+
+    const response = NextResponse.json({ success: true, message: 'Usuario registrado e inició sesión exitosamente.' });
+
+    // Set secure HttpOnly cookie (10 años de sesión)
+    response.cookies.set('auth_token', token, {
+      httpOnly: true,
+      path: '/',
+      maxAge: 315360000,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production'
+    });
+
+    return response;
   } catch (error: any) {
     console.error('[auth/register] Error registering user:', error);
     return NextResponse.json(

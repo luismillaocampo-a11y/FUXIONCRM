@@ -2,9 +2,10 @@
 
 import React from 'react';
 import AnalyticsView from './AnalyticsView';
-import { 
+import {
   Users, Award, Clock, DollarSign, TrendingUp, CheckCircle2
 } from 'lucide-react';
+import { calculateScore } from '@/lib/lead-utils';
 
 interface DashboardViewProps {
   leadStats: {
@@ -31,28 +32,6 @@ export default function DashboardView({
   aiEnabled,
   setActiveTab
 }: DashboardViewProps) {
-  const calculateScore = (lead: any) => {
-    if (!lead) return 0;
-    let score = 0;
-    let tagsList: string[] = [];
-    try {
-      tagsList = typeof lead.tags === 'string' ? JSON.parse(lead.tags) : (lead.tags || []);
-    } catch (e) {
-      tagsList = lead.tags || [];
-    }
-
-    if (tagsList.includes('hot-lead')) score += 25;
-    if (tagsList.includes('interested') || tagsList.includes('interesado')) score += 10;
-    if (tagsList.includes('needs-verification') || tagsList.includes('ready-to-buy')) score += 15;
-
-    if (lead.status === 'Pending Verification') score += 20;
-    if (lead.status === 'Por Registrar en Web') score += 30;
-    if (lead.status === 'Converted') score += 50;
-
-    if (lead.unread_count > 0) score += 10;
-
-    return Math.min(score, 100);
-  };
 
   return (
     <div className="flex-1 flex flex-col gap-6 min-h-0">
@@ -116,7 +95,7 @@ export default function DashboardView({
         <div className="xl:col-span-8 space-y-6">
           
           {/* SVG Area Chart: Leads Registrados últimos 7 días */}
-          <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl shadow-xl">
+          <div className="bg-slate-950/40 border border-slate-800 p-6 rounded-3xl shadow-xl">
             <div className="flex justify-between items-center mb-4">
               <div>
                 <h4 className="text-sm font-bold text-white uppercase tracking-widest">Actividad de Registro</h4>
@@ -204,7 +183,7 @@ export default function DashboardView({
           </div>
 
           {/* Funnel de Ventas */}
-          <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl shadow-xl space-y-4">
+          <div className="bg-slate-950/40 border border-slate-800 p-6 rounded-3xl shadow-xl space-y-4">
             <div>
               <h4 className="text-sm font-bold text-white uppercase tracking-widest">Embudo del Pipeline de Ventas</h4>
               <p className="text-[10px] text-slate-500 mt-0.5">Leads activos en cada etapa comercial.</p>
@@ -223,7 +202,7 @@ export default function DashboardView({
                 return (
                   <div key={idx} className="flex items-center gap-3">
                     <span className="w-56 text-xs text-slate-400 truncate font-semibold">{stage.label}</span>
-                    <div className="flex-1 bg-slate-900/60 rounded-xl p-0.5 border border-slate-850 overflow-hidden">
+                    <div className="flex-1 bg-slate-900/60 rounded-xl p-0.5 border border-slate-800 overflow-hidden">
                       <div 
                         className={`h-7 ${stage.color} rounded-lg flex items-center justify-between px-3 text-[11px] font-extrabold text-white transition-all duration-700 shadow-lg ${stage.width}`}
                       >
@@ -243,7 +222,7 @@ export default function DashboardView({
         <div className="xl:col-span-4 space-y-6">
           
           {/* SVG Bar Chart: Distribución por Score */}
-          <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl shadow-xl">
+          <div className="bg-slate-950/40 border border-slate-800 p-6 rounded-3xl shadow-xl">
             <div>
               <h4 className="text-sm font-bold text-white uppercase tracking-widest">Distribución por Score de Lead</h4>
               <p className="text-[10px] text-slate-500 mt-0.5">Priorización de prospectos por puntuación.</p>
@@ -290,8 +269,8 @@ export default function DashboardView({
           </div>
 
           {/* Diagnóstico del Bot y Sistema */}
-          <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl shadow-xl space-y-4">
-            <h4 className="text-sm font-bold text-white uppercase tracking-widest border-b border-slate-850 pb-3 flex items-center gap-2">
+          <div className="bg-slate-950/40 border border-slate-800 p-6 rounded-3xl shadow-xl space-y-4">
+            <h4 className="text-sm font-bold text-white uppercase tracking-widest border-b border-slate-800 pb-3 flex items-center gap-2">
               <CheckCircle2 size={16} className="text-emerald-400" />
               Estado del Motor de IA
             </h4>

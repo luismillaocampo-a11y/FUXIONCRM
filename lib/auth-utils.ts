@@ -10,8 +10,21 @@ const ALGORITHM = 'aes-256-cbc';
 /**
  * Hashes a plain-text password using SHA-512 with salt.
  */
-export function hashPassword(password: string): string {
-  return crypto.pbkdf2Sync(password, SALT, 1000, 64, 'sha512').toString('hex');
+export function hashPassword(password: string, customSalt?: string): string {
+  const saltToUse = customSalt || SALT;
+  return crypto.pbkdf2Sync(password, saltToUse, 1000, 64, 'sha512').toString('hex');
+}
+
+/**
+ * Verifies a plain-text password against a stored hash, supporting both configured and legacy salt.
+ */
+export function verifyPassword(password: string, storedHash: string): boolean {
+  if (!password || !storedHash) return false;
+  if (hashPassword(password, SALT) === storedHash) return true;
+  if (SALT !== 'fuxionflow_crm_default_salt_2026') {
+    if (hashPassword(password, 'fuxionflow_crm_default_salt_2026') === storedHash) return true;
+  }
+  return false;
 }
 
 /**

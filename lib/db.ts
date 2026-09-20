@@ -8,7 +8,7 @@ const whatsappJsonReplacer = (_k: any, value: any) => {
 };
 
 const whatsappJsonReviver = (_key: any, value: any) => {
-  if (typeof value === 'object' && value !== null && value.type === 'Buffer' && typeof value.data === 'string') {
+  if (typeof value === 'object' && value !== null && (value.type === 'Buffer' || value.buffer === true) && typeof value.data === 'string') {
     return Buffer.from(value.data, 'base64');
   }
   return value;
@@ -26,29 +26,65 @@ if (typeof window === 'undefined') {
   );
 }
 
-// Determine if we should use Supabase
-// Force Supabase in production (Vercel/Lambda) to prevent read-only SQLite filesystem writes
-const isProduction = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL) || Boolean(process.env.LAMBDA_TASK_ROOT);
-let useSupabase = isProduction || Boolean(supabaseUrl && supabaseAnonKey);
+// Local-first: SQLite by default. Supabase only when explicitly enabled or on cloud deploy.
+const isCloudDeploy = Boolean(process.env.VERCEL) || Boolean(process.env.K_SERVICE) || Boolean(process.env.LAMBDA_TASK_ROOT) || process.env.PORT === '8080';
+let useSupabase = isCloudDeploy || process.env.USE_SUPABASE === 'true' || Boolean(supabaseUrl && supabaseAnonKey);
+
+/** Persistent app data directory (%APPDATA%\\NutraFlow CRM on Windows). */
+export function getAppDataStorageDir(): string {
+  const pathMod = require('path');
+  const fs = require('fs');
+  const baseDir = process.env.APPDATA || process.env.HOME || process.cwd();
+  const dir = pathMod.join(baseDir, 'NutraFlow CRM');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+function getSqliteDbPath(): string {
+  const pathMod = require('path');
+  if (process.env.APPDATA) {
+    return pathMod.join(getAppDataStorageDir(), 'db.sqlite');
+  }
+  return pathMod.join(process.cwd(), 'db.sqlite');
+}
 
 let sqliteDb: any = null;
 let DatabaseClass: any = null;
+let sqliteDbFailed = false;
+let sqliteLoadError = '';
+let lastUnifyRun = 0;
 
-// Initialize SQLite Fallback Database
-function getSqliteDb() {
+// Initialize SQLite Fallback Database (nullable: devuelve null si el módulo nativo no carga)
+function getSqliteDbOrNull() {
   if (sqliteDb) return sqliteDb;
+  if (sqliteDbFailed) return null;
 
-  if (!DatabaseClass) {
-    DatabaseClass = require('better-sqlite3');
+  try {
+    if (!DatabaseClass) {
+      const req = eval('require');
+      DatabaseClass = req('better-sqlite3');
+    }
+
+    const dbPath = getSqliteDbPath();
+    sqliteDb = new DatabaseClass(dbPath);
+    console.log('[DB] SQLite initialized at:', dbPath);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sqliteLoadError = msg;
+    console.warn('[DB] Native better-sqlite3 module unavailable:', msg);
+    console.warn('[DB] Solución: ejecuta "npm rebuild better-sqlite3" con el mismo Node que corre Next.js (verifica con "node --version"). Si cambiaste de versión de Node, el binario nativo debe recompilarse.');
+    sqliteDbFailed = true;
+    sqliteDb = null;
+    return null;
   }
-
-  const path = require('path');
-  const dbPath = path.join(/* turbopackIgnore: true */ process.cwd(), 'db.sqlite');
-  sqliteDb = new DatabaseClass(dbPath);
 
   try {
     sqliteDb.pragma('journal_mode = WAL');
     sqliteDb.pragma('synchronous = NORMAL');
+    // Hacer cumplir las FKs (los ON DELETE CASCADE/SET NULL son no-ops sin esto)
+    try { sqliteDb.pragma('foreign_keys = ON'); } catch { /* ignore */ }
   } catch (pErr) {
     // Ignore pragma warning if WAL is restricted
   }
@@ -60,6 +96,11 @@ function getSqliteDb() {
       name TEXT,
       phone TEXT UNIQUE NOT NULL,
       whatsapp_lid TEXT,
+      real_phone TEXT,
+      last_product TEXT,
+      last_order_qty INTEGER,
+      last_order_total REAL,
+      last_order_at TEXT,
       channel TEXT DEFAULT 'whatsapp',
       avatar_url TEXT,
       status TEXT NOT NULL DEFAULT 'New',
@@ -146,6 +187,24 @@ function getSqliteDb() {
   } catch (e) {}
 
   try {
+    sqliteDb.exec('ALTER TABLE leads ADD COLUMN real_phone TEXT;');
+  } catch (e) {}
+
+  try {
+    sqliteDb.exec('ALTER TABLE leads ADD COLUMN last_product TEXT;');
+  } catch (e) {}
+
+  for (const col of [
+    'ALTER TABLE leads ADD COLUMN last_order_qty INTEGER;',
+    'ALTER TABLE leads ADD COLUMN last_order_total REAL;',
+    'ALTER TABLE leads ADD COLUMN last_order_at TEXT;',
+  ]) {
+    try {
+      sqliteDb.exec(col);
+    } catch (e) {}
+  }
+
+  try {
     sqliteDb.exec(`CREATE TABLE IF NOT EXISTS lead_notes (
       id TEXT PRIMARY KEY,
       lead_id TEXT NOT NULL,
@@ -218,6 +277,45 @@ function getSqliteDb() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );`);
 
+    try {
+      sqliteDb.exec(`CREATE TABLE IF NOT EXISTS whatsapp_status_library (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        product_name TEXT,
+        category TEXT,
+        tags TEXT DEFAULT '[]',
+        media_url TEXT NOT NULL,
+        media_type TEXT DEFAULT 'image',
+        caption TEXT,
+        internal_notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );`);
+    } catch (e) {}
+
+    try {
+      sqliteDb.exec(`CREATE TABLE IF NOT EXISTS whatsapp_status_schedules (
+        id TEXT PRIMARY KEY,
+        library_id TEXT,
+        media_url TEXT NOT NULL,
+        media_type TEXT DEFAULT 'image',
+        caption TEXT,
+        scheduled_at TEXT,
+        recurrence_type TEXT DEFAULT 'none',
+        recurrence_days TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'pending',
+        published_at TEXT,
+        error_message TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );`);
+    } catch (e) {}
+
+    try {
+      sqliteDb.exec("ALTER TABLE whatsapp_status_schedules ADD COLUMN recurrence_type TEXT DEFAULT 'none';");
+    } catch (e) {}
+    try {
+      sqliteDb.exec("ALTER TABLE whatsapp_status_schedules ADD COLUMN recurrence_days TEXT DEFAULT '[]';");
+    } catch (e) {}
+
     const rulesCount = sqliteDb.prepare('SELECT count(*) as count FROM ai_rules').get() as { count: number };
     if (rulesCount.count === 0) {
       const defaultRules = [
@@ -270,10 +368,11 @@ function getSqliteDb() {
 
     try {
       const setSettingStmt = sqliteDb.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
-      setSettingStmt.run('client_company_name', 'Fuxion Flow');
+      setSettingStmt.run('client_company_name', '');
       setSettingStmt.run('vendor_brand_credit', 'Desarrollado por L. Milla');
       setSettingStmt.run('client_logo_url', '');
-      setSettingStmt.run('company_name_locked', 'true');
+      // Desbloqueado por defecto: se sella al registrar la empresa en la pantalla de licencia
+      setSettingStmt.run('company_name_locked', 'false');
     } catch (e) {}
 
 
@@ -294,9 +393,12 @@ function getSqliteDb() {
       .run(defaultFlowId, 'Flujo de Bienvenida', defaultNodes, defaultEdges);
   }
 
+  // Contactos demo solo si se pide explícito (SEED_DEMO_DATA=true).
+  // En distribución van apagados: un cliente nuevo arranca con bandeja vacía.
+  const wantDemo = process.env.SEED_DEMO_DATA === 'true';
   // Insert default leads if empty
   const leadCount = sqliteDb.prepare('SELECT count(*) as count FROM leads').get() as { count: number };
-  if (leadCount.count === 0) {
+  if (wantDemo && leadCount.count === 0) {
     sqliteDb.prepare(`
       INSERT INTO leads (id, name, phone, status, tags, bot_active)
       VALUES 
@@ -349,34 +451,27 @@ export let supabase: any = (useSupabase && supabaseUrl && supabaseAnonKey)
     }) 
   : null;
 
-// Helper to run Supabase queries and gracefully fallback to SQLite on auth errors
+// Helper to run Supabase queries safely
 async function runSupabaseQuery(action: (c: any) => Promise<any>) {
   if (!useSupabase || !supabase) return null;
   try {
     const res = await action(supabase);
-    // Supabase returns { data, error, status }
     if (res && res.error) {
-      const msg = res.error?.message || String(res.error);
-      if (msg.toLowerCase().includes('invalid api key') || res.status === 401) {
-        console.warn('Supabase auth failure detected, switching to SQLite fallback:', msg);
-        // disable Supabase for the rest of the runtime
-        // eslint-disable-next-line no-global-assign
-        (global as any).USE_SUPABASE = false;
-        (global as any).SUPABASE_DISABLED_REASON = msg;
-        // update local flags so subsequent calls use SQLite
-        // Note: mutate module-level vars
-        // @ts-ignore
-        useSupabase = false;
-        supabase = null;
-        return null;
+      console.warn('[Supabase Error]:', res.error?.message || res.error);
+      if (!isCloudDeploy) {
+        const msg = res.error?.message || String(res.error);
+        if (msg.toLowerCase().includes('invalid api key') || res.status === 401) {
+          console.warn('Supabase auth failure detected, switching to SQLite fallback:', msg);
+          (global as any).USE_SUPABASE = false;
+          useSupabase = false;
+          supabase = null;
+          return null;
+        }
       }
     }
     return res;
   } catch (e: any) {
-    console.warn('Supabase query exception, disabling Supabase fallback:', e?.message || e);
-    // @ts-ignore
-    useSupabase = false;
-    supabase = null;
+    console.warn('[Supabase Exception]:', e?.message || e);
     return null;
   }
 }
@@ -434,14 +529,21 @@ async function getWhatsappSession(sessionId: string = 'default') {
     if (res && !res.error && res.data) {
       return parseWhatsappSessionRow(res.data);
     }
+    if (isCloudDeploy) {
+      return null;
+    }
   }
-  const db = getSqliteDb();
+  const db = getSqliteDbOrNull();
+  if (!db) return null;
   const row = db.prepare('SELECT * FROM whatsapp_sessions WHERE id = ?').get(sessionId);
   return parseWhatsappSessionRow(row);
 }
 
 async function saveWhatsappSession(sessionId: string = 'default', creds?: any, keys?: any) {
-  const existing = await getWhatsappSession(sessionId);
+  let existing: any = null;
+  if (creds === undefined || keys === undefined) {
+    existing = await getWhatsappSession(sessionId);
+  }
   const data = {
     id: sessionId,
     creds: creds !== undefined ? creds : existing?.creds || null,
@@ -464,15 +566,20 @@ async function saveWhatsappSession(sessionId: string = 'default', creds?: any, k
     if (res && !res.error && res.data) {
       return parseWhatsappSessionRow(res.data);
     }
+    if (isCloudDeploy) {
+      return { id: sessionId, creds: data.creds, keys: data.keys, updated_at: new Date().toISOString() };
+    }
   }
 
-  const db = getSqliteDb();
-  if (existing) {
-    db.prepare('UPDATE whatsapp_sessions SET creds = ?, keys = ?, updated_at = ? WHERE id = ?')
-      .run(sqlitePayload.creds, sqlitePayload.keys, new Date().toISOString(), sessionId);
-  } else {
-    db.prepare('INSERT INTO whatsapp_sessions (id, creds, keys, updated_at) VALUES (?, ?, ?, ?)')
-      .run(sessionId, sqlitePayload.creds, sqlitePayload.keys, new Date().toISOString());
+  const db = getSqliteDbOrNull();
+  if (db) {
+    if (existing) {
+      db.prepare('UPDATE whatsapp_sessions SET creds = ?, keys = ?, updated_at = ? WHERE id = ?')
+        .run(sqlitePayload.creds, sqlitePayload.keys, new Date().toISOString(), sessionId);
+    } else {
+      db.prepare('INSERT INTO whatsapp_sessions (id, creds, keys, updated_at) VALUES (?, ?, ?, ?)')
+        .run(sessionId, sqlitePayload.creds, sqlitePayload.keys, new Date().toISOString());
+    }
   }
   return getWhatsappSession(sessionId);
 }
@@ -481,8 +588,10 @@ async function clearWhatsappSession(sessionId: string = 'default') {
   if (useSupabase) {
     await runSupabaseQuery((c) => c.from('whatsapp_sessions').delete().eq('id', sessionId));
   }
-  const db = getSqliteDb();
-  db.prepare('DELETE FROM whatsapp_sessions WHERE id = ?').run(sessionId);
+  const db = getSqliteDbOrNull();
+  if (db) {
+    db.prepare('DELETE FROM whatsapp_sessions WHERE id = ?').run(sessionId);
+  }
 }
 
 // Helper to extract core words from a question to check for similarity
@@ -508,6 +617,29 @@ function getCoreWords(text: string): string[] {
   return normalized.filter(w => w && !stopWords.has(w));
 }
 
+// Genera todas las variantes posibles de formato telefónico (9 dígitos, 11 dígitos con 51, signo +)
+function getPhoneVariants(input: string): string[] {
+  if (!input || typeof input !== 'string') return [];
+  const variants = new Set<string>();
+  variants.add(input);
+  
+  const clean = input.replace(/\D/g, '');
+  if (clean) {
+    variants.add(clean);
+    let nineDigits = clean;
+    if (clean.startsWith('51') && clean.length >= 11) {
+      nineDigits = clean.substring(2);
+    }
+    if (nineDigits.length === 9) {
+      variants.add(nineDigits);
+      variants.add('51' + nineDigits);
+      variants.add('+51' + nineDigits);
+      variants.add('+51 ' + nineDigits);
+    }
+  }
+  return Array.from(variants);
+}
+
 // Determines if two questions are similar enough to be considered duplicates
 function areQuestionsSimilar(q1: string, q2: string): boolean {
   const core1 = getCoreWords(q1);
@@ -529,71 +661,235 @@ function areQuestionsSimilar(q1: string, q2: string): boolean {
   return norm1 === norm2 || norm1.includes(norm2) || norm2.includes(norm1);
 }
 
+const dummyDb: any = {
+  prepare: () => ({
+    run: () => ({ changes: 0, lastInsertRowid: 0 }),
+    get: () => null,
+    all: () => [],
+  }),
+  transaction: (fn: any) => fn,
+  pragma: () => null,
+  exec: () => null,
+};
+
+/** Lanza un error legible si SQLite no está disponible (en vez del críptico "Cannot read properties of null"). */
+function requireSqliteDb(context: string) {
+  const sDb = getSqliteDbOrNull();
+  if (!sDb) {
+    if (useSupabase || isCloudDeploy) {
+      console.warn(`[DB] SQLite no disponible en ${context}, utilizando fallback seguro para Cloud/Supabase.`);
+      return dummyDb;
+    }
+    throw new Error(
+      `Base de datos local no disponible en ${context}. ` +
+        (sqliteLoadError ? `Detalle: ${sqliteLoadError}. ` : '') +
+        'Solución: ejecuta "npm rebuild better-sqlite3" y reinicia la app.'
+    );
+  }
+  return sDb;
+}
+
+/** Acceso estricto a SQLite para los ~40 call sites que no verifican null. */
+function getSqliteDb() {
+  return requireSqliteDb('db');
+}
+
+/** Parseo JSON genérico seguro con fallback (flows corruptos no tumban el endpoint). */
+function safeParseJson<T>(raw: unknown, fallback: T): T {
+  if (raw === null || raw === undefined) return fallback;
+  if (typeof raw !== 'string') return (raw as T) ?? fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return (parsed ?? fallback) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Parseo seguro de tags: una fila corrupta no debe tumbar todo el endpoint. */
+function safeParseTags(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((t) => typeof t === 'string');
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((t) => typeof t === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Estados válidos del pipeline. Todo estado fuera de esta lista se rechaza/normaliza. */
+export const LEAD_STATUSES = [
+  'New',
+  'Engaged',
+  'Pending Verification',
+  'Por Registrar en Web',
+  'Converted',
+  'Archived',
+] as const;
+
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+export function isValidLeadStatus(status: unknown): status is LeadStatus {
+  return typeof status === 'string' && (LEAD_STATUSES as readonly string[]).includes(status);
+}
+
+/** Diagnóstico del estado de la BD para la UI y logs. */
+export function getDatabaseStatus(): { sqliteOk: boolean; sqliteError: string; useSupabase: boolean } {
+  return { sqliteOk: !sqliteDbFailed, sqliteError: sqliteLoadError, useSupabase };
+}
+
+/**
+ * Respaldo en caliente de SQLite (online backup, seguro con WAL y escritura
+ * concurrente). Guarda en %APPDATA%/NutraFlow CRM/backups/db-YYYYMMDD-HHmm.sqlite
+ * y conserva las últimas `keep` copias. Devuelve la ruta o null si no hay SQLite local.
+ */
+export async function backupSqliteDb(keep = 7): Promise<string | null> {
+  const src = getSqliteDbOrNull();
+  if (!src) {
+    console.warn('[DB] Backup omitido: SQLite no disponible.');
+    return null;
+  }
+  const pathMod = require('path');
+  const fs = require('fs');
+  const dir = pathMod.join(getAppDataStorageDir(), 'backups');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const dest = pathMod.join(dir, `db-${stamp}.sqlite`);
+  await src.backup(dest);
+  // Rotación: conservar las últimas `keep`
+  try {
+    const files = fs
+      .readdirSync(dir)
+      .filter((f: string) => /^db-\d+\.sqlite$/.test(f))
+      .sort();
+    while (files.length > keep) {
+      const old = files.shift()!;
+      try {
+        fs.unlinkSync(pathMod.join(dir, old));
+      } catch {}
+    }
+  } catch {}
+  console.log('[DB] ✅ Respaldo creado:', dest);
+  return dest;
+}
+
 // Unified database operations API
 export const db = {
   // --- LEADS ---
   async getLeads(): Promise<any[]> {
+    let leads: any[] = [];
+    let unreadCounts: { [key: string]: number } = {};
+    let lastActivityMap: { [key: string]: string } = {};
+    // Solo caer a SQLite si Supabase no se intentó o falló. Un 0 legítimo en nube
+    // no debe mezclarse con datos locales viejos.
+    let supabaseOk = false;
+
     if (useSupabase) {
       const res = await runSupabaseQuery((c) => 
         c.from('leads')
          .select('*')
-         .order('created_at', { ascending: false })
       );
       if (res && !res.error) {
-        const leads = res.data || [];
-        const { data: unreadData, error: unreadError } = await getSupabase()
-          .from('chat_messages')
-          .select('lead_id')
-          .eq('sender', 'customer')
-          .eq('is_read', false);
+        supabaseOk = true;
+        leads = res.data || [];
         
-        const counts: { [key: string]: number } = {};
-        if (!unreadError && unreadData) {
-          for (const msg of unreadData) {
-            counts[msg.lead_id] = (counts[msg.lead_id] || 0) + 1;
+        const { data: messagesData } = await getSupabase()
+          .from('chat_messages')
+          .select('lead_id, sender, is_read, created_at');
+        
+        if (messagesData) {
+          for (const msg of messagesData) {
+            if (msg.sender === 'customer' && !msg.is_read) {
+              unreadCounts[msg.lead_id] = (unreadCounts[msg.lead_id] || 0) + 1;
+            }
+            if (msg.created_at) {
+              const prevMax = lastActivityMap[msg.lead_id];
+              if (!prevMax || new Date(msg.created_at).getTime() > new Date(prevMax).getTime()) {
+                lastActivityMap[msg.lead_id] = msg.created_at;
+              }
+            }
           }
         }
-        return leads.map((l: any) => cleanLeadTags({
-          ...l,
-          unread_count: counts[l.id] || 0
-        }));
       }
-      // fall through to sqlite fallback
     }
-    {
-      const db = getSqliteDb();
-      const leads = db.prepare("SELECT * FROM leads ORDER BY created_at DESC").all();
-      const unreadData = db.prepare("SELECT lead_id FROM chat_messages WHERE sender = 'customer' AND is_read = 0").all() as any[];
-      const counts: { [key: string]: number } = {};
-      for (const msg of unreadData) {
-        counts[msg.lead_id] = (counts[msg.lead_id] || 0) + 1;
+    
+    if (!supabaseOk && leads.length === 0) {
+      const sDb = getSqliteDbOrNull();
+      if (sDb) {
+        leads = sDb.prepare("SELECT * FROM leads").all();
+        const unreadData = sDb.prepare("SELECT lead_id FROM chat_messages WHERE sender = 'customer' AND is_read = 0").all() as any[];
+        for (const msg of unreadData) {
+          unreadCounts[msg.lead_id] = (unreadCounts[msg.lead_id] || 0) + 1;
+        }
+        const recentMsgs = sDb.prepare("SELECT lead_id, created_at FROM chat_messages").all() as any[];
+        for (const msg of recentMsgs) {
+          if (msg.created_at) {
+            const prevMax = lastActivityMap[msg.lead_id];
+            if (!prevMax || new Date(msg.created_at).getTime() > new Date(prevMax).getTime()) {
+              lastActivityMap[msg.lead_id] = msg.created_at;
+            }
+          }
+        }
       }
-      return leads.map((l: any) => cleanLeadTags({
+    }
+
+    const processedLeads = leads.map((l: any) => {
+      const rawTags = safeParseTags(l.tags);
+      const associatedIds = [l.id, l.phone, l.whatsapp_lid].filter(Boolean);
+      
+      let maxActivity = l.updated_at || l.created_at || new Date(0).toISOString();
+      for (const id of associatedIds) {
+        const msgActivity = lastActivityMap[id];
+        if (msgActivity && new Date(msgActivity).getTime() > new Date(maxActivity).getTime()) {
+          maxActivity = msgActivity;
+        }
+      }
+      
+      let unreadCount = 0;
+      for (const id of associatedIds) {
+        if (unreadCounts[id]) unreadCount += unreadCounts[id];
+      }
+
+      return cleanLeadTags({
         ...l,
-        tags: JSON.parse(l.tags),
+        tags: rawTags,
         bot_active: Boolean(l.bot_active),
-        unread_count: counts[l.id] || 0
-      }));
-    }
+        unread_count: unreadCount,
+        last_activity: maxActivity
+      });
+    });
+
+    // Ordenar de forma absoluta por la fecha del mensaje o actividad más reciente (PRIMERO EL MÁS RECIENTE)
+    return processedLeads.sort((a, b) => {
+      const timeA = new Date(a.last_activity || a.updated_at || a.created_at || 0).getTime();
+      const timeB = new Date(b.last_activity || b.updated_at || b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
   },
 
   async getLeadById(id: string): Promise<any> {
     const realId = await this.normalizeLeadId(id);
     if (useSupabase) {
-      const res = await runSupabaseQuery((c) => c.from('leads').select('*').eq('id', realId).single());
-      if (res && !res.error) return cleanLeadTags(res.data);
-      // fall through to sqlite fallback
+      const res = await runSupabaseQuery((c) => c.from('leads').select('*').eq('id', realId).maybeSingle());
+      if (res && !res.error) {
+        return res.data ? cleanLeadTags(res.data) : null;
+      }
+      if (isCloudDeploy) {
+        return null;
+      }
     }
-    {
-      const db = getSqliteDb();
-      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(realId) as any;
-      if (!lead) return null;
-      return cleanLeadTags({
-        ...lead,
-        tags: JSON.parse(lead.tags),
-        bot_active: Boolean(lead.bot_active)
-      });
-    }
+    const db = getSqliteDbOrNull();
+    if (!db) return null;
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(realId) as any;
+    if (!lead) return null;
+    return cleanLeadTags({
+      ...lead,
+      tags: safeParseTags(lead.tags),
+      bot_active: Boolean(lead.bot_active)
+    });
   },
 
   async getLeadIdByWhatsappLid(lid: string): Promise<string | null> {
@@ -605,14 +901,14 @@ export const db = {
          .maybeSingle()
       );
       if (res && !res.error && res.data) return res.data.id;
-      return null;
     }
-    const db = getSqliteDb();
+    const db = getSqliteDbOrNull();
+    if (!db) return null;
     const row = db.prepare('SELECT id FROM leads WHERE whatsapp_lid = ?').get(lid) as any;
     return row ? row.id : null;
   },
 
-  async upsertLead(lead: { id: string; name: string; phone: string; whatsapp_lid?: string | null; status?: string; tags?: string[]; bot_active?: boolean }): Promise<any> {
+  async upsertLead(lead: { id: string; name: string; phone: string; whatsapp_lid?: string | null; real_phone?: string | null; last_product?: string | null; last_order_qty?: number | null; last_order_total?: number | null; last_order_at?: string | null; status?: string; tags?: string[]; bot_active?: boolean; channel?: string | null }): Promise<any> {
     // Normalizar ID del lead de entrada para evitar duplicidad de registros LID/Teléfono
     const normalizedId = await this.normalizeLeadId(lead.id);
     lead.id = normalizedId;
@@ -621,41 +917,80 @@ export const db = {
     
     // Merge existing values to prevent losing them on simple upserts
     const whatsappLid = lead.whatsapp_lid || existing?.whatsapp_lid || null;
-    const status = lead.status || existing?.status || 'New';
-    const tags = lead.tags || (existing?.tags ? (typeof existing.tags === 'string' ? JSON.parse(existing.tags) : existing.tags) : []);
+    const realPhone = lead.real_phone || existing?.real_phone || null;
+    const lastProduct = lead.last_product || existing?.last_product || null;
+    const lastOrderQty = lead.last_order_qty ?? existing?.last_order_qty ?? null;
+    const lastOrderTotal = lead.last_order_total ?? existing?.last_order_total ?? null;
+    const lastOrderAt = lead.last_order_at || existing?.last_order_at || null;
+    // Solo persisten estados válidos; un typo no debe contaminar el pipeline
+    const status = isValidLeadStatus(lead.status)
+      ? lead.status
+      : isValidLeadStatus(existing?.status)
+        ? existing.status
+        : 'New';
+    const tags = lead.tags || safeParseTags(existing?.tags);
     const botActive = lead.bot_active !== undefined ? lead.bot_active : (existing?.bot_active !== undefined ? existing.bot_active : true);
+    const channel = typeof lead.channel === 'string' && lead.channel
+      ? lead.channel
+      : (typeof existing?.channel === 'string' && existing.channel ? existing.channel : 'whatsapp');
 
     const tagsStr = JSON.stringify(tags);
     const botActiveVal = botActive ? 1 : 0;
 
     let result;
     if (useSupabase) {
-      const res = await runSupabaseQuery((c) => c.from('leads').upsert({
+      const supabasePayload: any = {
         id: lead.id,
         name: lead.name,
         phone: lead.phone,
-        whatsapp_lid: whatsappLid,
         status,
         tags,
-        bot_active: botActive
-      }).select().single());
-      if (res && !res.error) result = res.data;
+        bot_active: botActive,
+        updated_at: new Date().toISOString()
+      };
+      if (whatsappLid) {
+        supabasePayload.whatsapp_lid = whatsappLid;
+      }
+      const res = await runSupabaseQuery((c) => c.from('leads').upsert(supabasePayload, { onConflict: 'id' }).select().single());
+      if (res && !res.error && res.data) {
+        result = cleanLeadTags(res.data);
+      }
     }
     if (!result) {
-      const db = getSqliteDb();
-      db.prepare(`
-        INSERT INTO leads (id, name, phone, whatsapp_lid, status, tags, bot_active)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          name = excluded.name,
-          phone = excluded.phone,
-          whatsapp_lid = excluded.whatsapp_lid,
-          status = excluded.status,
-          tags = excluded.tags,
-          bot_active = excluded.bot_active,
-          updated_at = CURRENT_TIMESTAMP
-      `).run(lead.id, lead.name, lead.phone, whatsappLid, status, tagsStr, botActiveVal);
-      result = await this.getLeadById(lead.id);
+      const db = getSqliteDbOrNull();
+      if (db) {
+        db.prepare(`
+          INSERT INTO leads (id, name, phone, whatsapp_lid, real_phone, last_product, last_order_qty, last_order_total, last_order_at, status, tags, bot_active, channel)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            phone = excluded.phone,
+            whatsapp_lid = excluded.whatsapp_lid,
+            real_phone = excluded.real_phone,
+            last_product = excluded.last_product,
+            last_order_qty = excluded.last_order_qty,
+            last_order_total = excluded.last_order_total,
+            last_order_at = excluded.last_order_at,
+            status = excluded.status,
+            tags = excluded.tags,
+            bot_active = excluded.bot_active,
+            channel = excluded.channel,
+            updated_at = CURRENT_TIMESTAMP
+        `).run(lead.id, lead.name, lead.phone, whatsappLid, realPhone, lastProduct, lastOrderQty, lastOrderTotal, lastOrderAt, status, tagsStr, botActiveVal, channel);
+        result = await this.getLeadById(lead.id);
+      } else {
+        result = {
+          id: lead.id,
+          name: lead.name,
+          phone: lead.phone,
+          whatsapp_lid: whatsappLid,
+          real_phone: realPhone,
+          status,
+          tags,
+          bot_active: botActive,
+          updated_at: new Date().toISOString()
+        };
+      }
     }
 
     // Ejecutar unificación en segundo plano para limpiar cualquier duplicado preexistente
@@ -684,17 +1019,19 @@ export const db = {
     if (existing) {
       let dbTags: string[] = [];
       if (useSupabase) {
-        const res = await runSupabaseQuery((c) => c.from('leads').select('tags').eq('id', existing.id).single());
+        const res = await runSupabaseQuery((c) => c.from('leads').select('tags').eq('id', existing.id).maybeSingle());
         if (res && !res.error && res.data) {
           dbTags = res.data.tags || [];
         }
       } else {
-        const db = getSqliteDb();
-        const row = db.prepare('SELECT tags FROM leads WHERE id = ?').get(existing.id) as any;
-        if (row?.tags) {
-          try {
-            dbTags = JSON.parse(row.tags);
-          } catch(e){}
+        const db = getSqliteDbOrNull();
+        if (db) {
+          const row = db.prepare('SELECT tags FROM leads WHERE id = ?').get(existing.id) as any;
+          if (row?.tags) {
+            try {
+              dbTags = JSON.parse(row.tags);
+            } catch(e){}
+          }
         }
       }
       const flowStateTags = dbTags.filter((t: string) => t.startsWith('flowState:'));
@@ -706,9 +1043,11 @@ export const db = {
       const { error } = isUuid ? query.eq('id', id) : query.eq('phone', id);
       if (error) throw error;
     } else {
-      const db = getSqliteDb();
-      const dbId = isUuid ? id : await this.normalizeLeadId(id);
-      db.prepare('UPDATE leads SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(tagsStr, dbId);
+      const db = getSqliteDbOrNull();
+      if (db) {
+        const dbId = isUuid ? id : await this.normalizeLeadId(id);
+        db.prepare('UPDATE leads SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(tagsStr, dbId);
+      }
     }
   },
 
@@ -720,9 +1059,43 @@ export const db = {
       const { error } = isUuid ? query.eq('id', id) : query.eq('phone', id);
       if (error) throw error;
     } else {
-      const db = getSqliteDb();
-      const dbId = isUuid ? id : await this.normalizeLeadId(id);
-      db.prepare('UPDATE leads SET bot_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(activeVal, dbId);
+      const db = getSqliteDbOrNull();
+      if (db) {
+        const dbId = isUuid ? id : await this.normalizeLeadId(id);
+        db.prepare('UPDATE leads SET bot_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(activeVal, dbId);
+      }
+    }
+  },
+
+  async setLeadLastProduct(id: string, product: string): Promise<void> {
+    const clean = (product || '').trim().slice(0, 120);
+    if (!clean) return;
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('leads').update({ last_product: clean }).eq('id', id));
+    } else {
+      const db = getSqliteDbOrNull();
+      if (db) db.prepare('UPDATE leads SET last_product = ? WHERE id = ?').run(clean, id);
+    }
+  },
+
+  /** Guarda la foto del último pedido (Fase 2). No toca updated_at. */
+  async setLeadLastOrder(id: string, qty: number, total: number): Promise<void> {
+    const q = Math.floor(Number(qty));
+    const t = Math.round(Number(total) * 100) / 100;
+    if (!Number.isFinite(q) || q < 1 || q > 999 || !Number.isFinite(t) || t < 0) return;
+    const nowIso = new Date().toISOString();
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('leads').update({ last_order_qty: q, last_order_total: t, last_order_at: nowIso }).eq('id', id));
+    } else {
+      const db = getSqliteDbOrNull();
+      if (db) {
+        db.prepare('UPDATE leads SET last_order_qty = ?, last_order_total = ?, last_order_at = ? WHERE id = ?').run(
+          q,
+          t,
+          nowIso,
+          id
+        );
+      }
     }
   },
 
@@ -730,17 +1103,19 @@ export const db = {
     const realId = await this.normalizeLeadId(leadId);
     let dbTags: string[] = [];
     if (useSupabase) {
-      const res = await runSupabaseQuery((c) => c.from('leads').select('tags').eq('id', realId).single());
+      const res = await runSupabaseQuery((c) => c.from('leads').select('tags').eq('id', realId).maybeSingle());
       if (res && !res.error && res.data) {
         dbTags = res.data.tags || [];
       }
     } else {
-      const db = getSqliteDb();
-      const row = db.prepare('SELECT tags FROM leads WHERE id = ?').get(realId) as any;
-      if (row?.tags) {
-        try {
-          dbTags = JSON.parse(row.tags);
-        } catch(e){}
+      const db = getSqliteDbOrNull();
+      if (db) {
+        const row = db.prepare('SELECT tags FROM leads WHERE id = ?').get(realId) as any;
+        if (row?.tags) {
+          try {
+            dbTags = JSON.parse(row.tags);
+          } catch(e){}
+        }
       }
     }
     const flowTag = dbTags.find((t: string) => t.startsWith('flowState:'));
@@ -753,17 +1128,19 @@ export const db = {
     let isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(realId);
     
     if (useSupabase) {
-      const res = await runSupabaseQuery((c) => c.from('leads').select('tags').eq('id', realId).single());
+      const res = await runSupabaseQuery((c) => c.from('leads').select('tags').eq('id', realId).maybeSingle());
       if (res && !res.error && res.data) {
         dbTags = res.data.tags || [];
       }
     } else {
-      const db = getSqliteDb();
-      const row = db.prepare('SELECT tags FROM leads WHERE id = ?').get(realId) as any;
-      if (row?.tags) {
-        try {
-          dbTags = JSON.parse(row.tags);
-        } catch(e){}
+      const db = getSqliteDbOrNull();
+      if (db) {
+        const row = db.prepare('SELECT tags FROM leads WHERE id = ?').get(realId) as any;
+        if (row?.tags) {
+          try {
+            dbTags = JSON.parse(row.tags);
+          } catch(e){}
+        }
       }
     }
     
@@ -829,8 +1206,8 @@ export const db = {
       const db = getSqliteDb();
       return db.prepare('SELECT * FROM flows ORDER BY updated_at DESC').all().map((f: any) => ({
         ...f,
-        nodes: JSON.parse(f.nodes),
-        edges: JSON.parse(f.edges),
+        nodes: safeParseJson(f.nodes, []),
+        edges: safeParseJson(f.edges, []),
         is_active: Boolean(f.is_active)
       }));
     }
@@ -847,8 +1224,8 @@ export const db = {
       if (!flow) return null;
       return {
         ...flow,
-        nodes: JSON.parse(flow.nodes),
-        edges: JSON.parse(flow.edges),
+        nodes: safeParseJson(flow.nodes, []),
+        edges: safeParseJson(flow.edges, []),
         is_active: Boolean(flow.is_active)
       };
     }
@@ -892,8 +1269,15 @@ export const db = {
       if (error) throw error;
     } else {
       const db = getSqliteDb();
-      db.prepare('UPDATE flows SET is_active = 0').run();
-      db.prepare('UPDATE flows SET is_active = 1 WHERE id = ?').run(id);
+      const exists = db.prepare('SELECT 1 FROM flows WHERE id = ?').get(id);
+      if (!exists) {
+        throw new Error(`Flow no encontrado: ${id}`);
+      }
+      const activate = db.transaction(() => {
+        db.prepare('UPDATE flows SET is_active = 0').run();
+        db.prepare('UPDATE flows SET is_active = 1 WHERE id = ?').run(id);
+      });
+      activate();
     }
   },
   
@@ -918,8 +1302,8 @@ export const db = {
       if (!flow) return null;
       return {
         ...flow,
-        nodes: JSON.parse(flow.nodes),
-        edges: JSON.parse(flow.edges),
+        nodes: safeParseJson(flow.nodes, []),
+        edges: safeParseJson(flow.edges, []),
         is_active: Boolean(flow.is_active)
       };
     }
@@ -966,6 +1350,68 @@ export const db = {
     } else {
       const db = getSqliteDb();
       db.prepare('DELETE FROM knowledge_base WHERE id = ?').run(id);
+    }
+  },
+
+  /**
+   * Vacía la base de conocimiento (solo filas; los archivos físicos se conservan
+   * para que Deshacer restaure perfecto). Devuelve cuántas filas borró.
+   */
+  async deleteAllKBItems(): Promise<number> {
+    if (useSupabase) {
+      const { error, count } = await getSupabase().from('knowledge_base').delete().neq('id', '__none__');
+      if (error) throw error;
+      return count || 0;
+    } else {
+      const db = getSqliteDb();
+      const r = db.prepare('DELETE FROM knowledge_base').run();
+      return Number(r.changes || 0);
+    }
+  },
+
+  /**
+   * Restaura filas previamente respaldadas (Deshacer del vaciado). Sin límite
+   * práctico salvo topes del endpoint. Inserta u omite por id existente.
+   */
+  async restoreKBItems(items: Array<{ id: string; title: string; file_type?: string; content?: string; summary?: string; file_path?: string }>): Promise<number> {
+    if (!Array.isArray(items) || items.length === 0) return 0;
+    let restored = 0;
+    if (useSupabase) {
+      for (const it of items.slice(0, 200)) {
+        if (!it || typeof it.id !== 'string') continue;
+        const { error } = await getSupabase().from('knowledge_base').upsert({
+          id: it.id.slice(0, 128),
+          title: String(it.title || 'Sin título').slice(0, 200),
+          file_type: String(it.file_type || 'txt').slice(0, 20),
+          content: String(it.content || '').slice(0, 200000),
+          summary: String(it.summary || '').slice(0, 5000),
+          file_path: typeof it.file_path === 'string' ? it.file_path.slice(0, 2048) : null,
+        }, { onConflict: 'id' });
+        if (!error) restored++;
+      }
+      return restored;
+    } else {
+      const db = getSqliteDb();
+      const stmt = db.prepare(`
+        INSERT OR IGNORE INTO knowledge_base (id, title, file_type, content, summary, file_path)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      const tx = db.transaction((list: typeof items) => {
+        for (const it of list.slice(0, 200)) {
+          if (!it || typeof it.id !== 'string') continue;
+          stmt.run(
+            it.id.slice(0, 128),
+            String(it.title || 'Sin título').slice(0, 200),
+            String(it.file_type || 'txt').slice(0, 20),
+            String(it.content || '').slice(0, 200000),
+            String(it.summary || '').slice(0, 5000),
+            typeof it.file_path === 'string' ? it.file_path.slice(0, 2048) : null
+          );
+          restored++;
+        }
+      });
+      tx(items);
+      return restored;
     }
   },
 
@@ -1126,76 +1572,214 @@ export const db = {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(leadId);
     if (isUuid) return leadId;
 
-    const clean = leadId.replace(/\D/g, '');
+    const variants = getPhoneVariants(leadId);
     
     if (useSupabase) {
+      const orClauses = variants.flatMap(v => [
+        `id.eq.${v}`,
+        `phone.eq.${v}`,
+        `whatsapp_lid.eq.${v}`
+      ]).join(',');
+
       const res = await runSupabaseQuery((c) => 
         c.from('leads')
          .select('id')
-         .or(`phone.eq.${leadId},whatsapp_lid.eq.${leadId},phone.eq.${clean},whatsapp_lid.eq.${clean}`)
+         .or(orClauses)
          .maybeSingle()
       );
       if (res && !res.error && res.data) return res.data.id;
     }
     
-    const db = getSqliteDb();
-    const row = db.prepare('SELECT id FROM leads WHERE id = ? OR phone = ? OR whatsapp_lid = ? OR phone = ? OR whatsapp_lid = ?')
-      .get(leadId, leadId, leadId, clean, clean) as any;
-    if (row) return row.id;
+    const sDb = getSqliteDbOrNull();
+    if (sDb) {
+      for (const v of variants) {
+        const row = sDb.prepare('SELECT id FROM leads WHERE id = ? OR phone = ? OR whatsapp_lid = ?').get(v, v, v) as any;
+        if (row) return row.id;
+      }
+    }
 
     return leadId;
   },
 
+  async mergeLeads(sourceLeadId: string, targetLeadId: string): Promise<void> {
+    if (!sourceLeadId || !targetLeadId || sourceLeadId === targetLeadId) return;
+    try {
+      console.log(`[db.mergeLeads] Fusionando lead duplicado ${sourceLeadId} dentro de lead principal ${targetLeadId}...`);
+      const sourceLead = await this.getLeadById(sourceLeadId);
+      const targetLead = await this.getLeadById(targetLeadId);
+
+      if (!targetLead) {
+        console.warn(`[db.mergeLeads] Target lead ${targetLeadId} no encontrado, abortando fusión.`);
+        return;
+      }
+
+      // Preservar el mejor nombre (evitar nombres genéricos 'WhatsApp 14...')
+      let resolvedName = targetLead.name;
+      if (
+        (!resolvedName || resolvedName.startsWith('WhatsApp ') || resolvedName.length < 3) &&
+        sourceLead?.name && !sourceLead.name.startsWith('WhatsApp ')
+      ) {
+        resolvedName = sourceLead.name;
+      }
+
+      // Resolver whatsapp_lid
+      const resolvedLid = targetLead.whatsapp_lid || sourceLead?.whatsapp_lid || (sourceLeadId.length >= 13 ? sourceLeadId : null);
+
+      // Resolver teléfono real: preferir el no-LID (match distinto de whatsapp_lid o <14 dígitos)
+      const lidD = typeof targetLead.whatsapp_lid === 'string' ? targetLead.whatsapp_lid.replace(/\D/g, '') : '';
+      const lidEvidence = lidD.length >= 14 ? lidD : '';
+      const isShort = (v: unknown) => {
+        if (typeof v !== 'string') return false;
+        const d = v.replace(/\D/g, '');
+        if (!d) return false;
+        if (lidEvidence && d === lidEvidence) return false;
+        return d.length < 14;
+      };
+      const resolvedRealPhone =
+        (isShort(targetLead.real_phone) && targetLead.real_phone) ||
+        (isShort(sourceLead?.real_phone) && sourceLead.real_phone) ||
+        (isShort(targetLead.phone) && targetLead.phone) ||
+        (isShort(sourceLead?.phone) && sourceLead.phone) ||
+        null;
+
+      // Combinar tags
+      const targetTags: string[] = Array.isArray(targetLead.tags) ? targetLead.tags : [];
+      const sourceTags: string[] = (sourceLead && Array.isArray(sourceLead.tags)) ? sourceLead.tags : [];
+      const mergedTags = Array.from(new Set([...targetTags, ...sourceTags]));
+
+      // Status más avanzado si aplica
+      const statusPriority: { [key: string]: number } = {
+        'New': 1,
+        'Engaged': 2,
+        'Pending Verification': 3,
+        'Por Registrar en Web': 4,
+        'Converted': 5,
+        'Archived': 0
+      };
+      let resolvedStatus = targetLead.status || 'New';
+      if (sourceLead?.status && (statusPriority[sourceLead.status] || 0) > (statusPriority[resolvedStatus] || 0)) {
+        resolvedStatus = sourceLead.status;
+      }
+
+      // Producto: se conserva el más reciente (el target salvo que esté vacío)
+      const resolvedProduct =
+        (typeof targetLead.last_product === 'string' && targetLead.last_product.trim()
+          ? targetLead.last_product
+          : null) ||
+        (sourceLead && typeof sourceLead.last_product === 'string' && sourceLead.last_product.trim()
+          ? sourceLead.last_product
+          : null);
+      // Pedido: igual criterio (los tres campos viajan juntos)
+      const resolvedOrderQty = targetLead.last_order_qty ?? sourceLead?.last_order_qty ?? null;
+      const resolvedOrderTotal = targetLead.last_order_total ?? sourceLead?.last_order_total ?? null;
+      const resolvedOrderAt = targetLead.last_order_at || sourceLead?.last_order_at || null;
+
+      const nowIso = new Date().toISOString();
+
+      if (useSupabase) {
+        await runSupabaseQuery((c) => c.from('chat_messages').update({ lead_id: targetLeadId }).eq('lead_id', sourceLeadId));
+        await runSupabaseQuery((c) => c.from('knowledge_gaps').update({ lead_id: targetLeadId }).eq('lead_id', sourceLeadId));
+        await runSupabaseQuery((c) => c.from('lead_notes').update({ lead_id: targetLeadId }).eq('lead_id', sourceLeadId));
+        await runSupabaseQuery((c) => c.from('reminders').update({ lead_id: targetLeadId }).eq('lead_id', sourceLeadId));
+        await runSupabaseQuery((c) => c.from('leads').delete().eq('id', sourceLeadId));
+        const updatePayload: any = {
+          name: resolvedName,
+          status: resolvedStatus,
+          tags: mergedTags,
+          updated_at: nowIso
+        };
+        if (resolvedLid) updatePayload.whatsapp_lid = resolvedLid;
+        await runSupabaseQuery((c) => c.from('leads').update(updatePayload).eq('id', targetLeadId));
+      } else {
+        const db = getSqliteDbOrNull();
+        if (db) {
+          const merge = db.transaction(() => {
+            db.prepare('UPDATE chat_messages SET lead_id = ? WHERE lead_id = ?').run(targetLeadId, sourceLeadId);
+            db.prepare('UPDATE knowledge_gaps SET lead_id = ? WHERE lead_id = ?').run(targetLeadId, sourceLeadId);
+            try { db.prepare('UPDATE lead_notes SET lead_id = ? WHERE lead_id = ?').run(targetLeadId, sourceLeadId); } catch (e) {}
+            try { db.prepare('UPDATE reminders SET lead_id = ? WHERE lead_id = ?').run(targetLeadId, sourceLeadId); } catch (e) {}
+            db.prepare('DELETE FROM leads WHERE id = ?').run(sourceLeadId);
+            db.prepare(`
+              UPDATE leads
+              SET name = ?, whatsapp_lid = ?, real_phone = ?, last_product = ?, last_order_qty = ?, last_order_total = ?, last_order_at = ?, status = ?, tags = ?, updated_at = ?
+              WHERE id = ?
+            `).run(resolvedName, resolvedLid, resolvedRealPhone, resolvedProduct, resolvedOrderQty, resolvedOrderTotal, resolvedOrderAt, resolvedStatus, JSON.stringify(mergedTags), nowIso, targetLeadId);
+          });
+          merge();
+        }
+      }
+      console.log(`[db.mergeLeads] ✅ Fusión completada con éxito. Lead ${targetLeadId} actualizado.`);
+    } catch (e) {
+      console.error('[db.mergeLeads] Error fusionando leads:', e);
+    }
+  },
+
+  // Throttle best-effort en memoria (1 vez/min): el auto-merge es O(n) y
+  // upsertLead lo dispara en segundo plano por cada mensaje.
   async unifyDuplicateLeads(): Promise<void> {
     try {
+      const now = Date.now();
+      if (now - lastUnifyRun < 60_000) return;
+      lastUnifyRun = now;
+
       console.log('[db.unifyDuplicateLeads] Iniciando escaneo de leads duplicados...');
       let leads: any[] = [];
       if (useSupabase) {
         const { data, error } = await getSupabase().from('leads').select('*');
         if (!error && data) leads = data;
       } else {
-        const db = getSqliteDb();
-        leads = db.prepare('SELECT * FROM leads').all();
+        const db = getSqliteDbOrNull();
+        if (db) leads = db.prepare('SELECT * FROM leads').all();
       }
 
+      const digitsOf = (v: unknown) => (typeof v === 'string' ? v.replace(/\D/g, '') : '');
+      // Solo identificadores con longitud de teléfono/LID real (evita '123' de fb_/ig_).
+      const usable = (d: string) => d.length >= 7;
+
+      // Agrupar filas por cada identificador exacto (id, phone, real_phone, whatsapp_lid).
+      // Solo coincidencias EXACTAS de dígitos fusionan. La vieja regla por substring
+      // de nombre se eliminó: fusionaba clientes distintos (p. ej. "Luiz" en "Luiz Milla").
+      const groups = new Map<string, Set<string>>();
+      const byId = new Map<string, any>();
       for (const lead of leads) {
-        const isLid = lead.id.startsWith('1415') || (lead.phone && lead.phone.startsWith('1415'));
-        if (isLid) {
-          const cleanId = lead.id.replace(/\D/g, '');
-          const cleanPhone = lead.phone ? lead.phone.replace(/\D/g, '') : '';
-          
-          const realLead = leads.find((l: any) => 
-            !l.id.startsWith('1415') && 
-            !l.phone.startsWith('1415') && 
-            (l.whatsapp_lid === cleanId || l.whatsapp_lid === cleanPhone || l.phone === cleanId || l.id === cleanId)
-          );
+        if (!lead || !lead.id) continue;
+        byId.set(lead.id, lead);
+        const keys = new Set(
+          [lead.id, lead.phone, lead.real_phone, lead.whatsapp_lid].map(digitsOf).filter(usable)
+        );
+        for (const k of keys) {
+          if (!groups.has(k)) groups.set(k, new Set());
+          groups.get(k)!.add(lead.id);
+        }
+      }
 
-          if (realLead) {
-            console.log(`[db.unifyDuplicateLeads] Duplicado detectado! Fusionando lead LID ${lead.id} con lead real ${realLead.id}`);
-            
-            if (useSupabase) {
-              const { error: msgErr } = await getSupabase().from('chat_messages').update({ lead_id: realLead.id }).eq('lead_id', lead.id);
-              if (msgErr) console.error('Error fusionando mensajes en Supabase:', msgErr);
+      const merged = new Set<string>();
+      const shortPhoneOf = (l: any): string | null => {
+        for (const v of [l.real_phone, l.phone]) {
+          const d = digitsOf(v);
+          if (d && d.length < 14) return d;
+        }
+        return null;
+      };
 
-              const { error: gapErr } = await getSupabase().from('knowledge_gaps').update({ lead_id: realLead.id }).eq('lead_id', lead.id);
-              if (gapErr) console.error('Error fusionando dudas en Supabase:', gapErr);
-
-              const { error: delErr } = await getSupabase().from('leads').delete().eq('id', lead.id);
-              if (delErr) console.error('Error eliminando lead duplicado en Supabase:', delErr);
-
-              if (!realLead.whatsapp_lid) {
-                await getSupabase().from('leads').update({ whatsapp_lid: cleanId }).eq('id', realLead.id);
-              }
-            } else {
-              const db = getSqliteDb();
-              db.prepare('UPDATE chat_messages SET lead_id = ? WHERE lead_id = ?').run(realLead.id, lead.id);
-              db.prepare('UPDATE knowledge_gaps SET lead_id = ? WHERE lead_id = ?').run(realLead.id, lead.id);
-              db.prepare('DELETE FROM leads WHERE id = ?').run(lead.id);
-              if (!realLead.whatsapp_lid) {
-                db.prepare('UPDATE leads SET whatsapp_lid = ? WHERE id = ?').run(cleanId, realLead.id);
-              }
-            }
-          }
+      for (const [, ids] of groups) {
+        const alive = [...ids].filter((id) => byId.has(id) && !merged.has(id));
+        if (alive.length < 2) continue;
+        // Target: el que tenga teléfono corto; desempate por antigüedad.
+        alive.sort((a, b) => {
+          const sa = shortPhoneOf(byId.get(a)) ? 0 : 1;
+          const sb = shortPhoneOf(byId.get(b)) ? 0 : 1;
+          if (sa !== sb) return sa - sb;
+          const ta = new Date(byId.get(a)?.created_at || 0).getTime();
+          const tb = new Date(byId.get(b)?.created_at || 0).getTime();
+          return ta - tb;
+        });
+        const target = alive[0];
+        for (const source of alive.slice(1)) {
+          if (merged.has(source)) continue;
+          console.log(`[db.unifyDuplicateLeads] Duplicado exacto detectado. Fusionando ${source} en ${target}`);
+          await this.mergeLeads(source, target);
+          merged.add(source);
         }
       }
       console.log('[db.unifyDuplicateLeads] Escaneo e unificación finalizado.');
@@ -1213,8 +1797,10 @@ export const db = {
 
   async getAssociatedIds(leadId: string): Promise<string[]> {
     const ids = new Set<string>();
-    ids.add(leadId);
+    if (leadId) ids.add(leadId);
     try {
+      getPhoneVariants(leadId).forEach(v => ids.add(v));
+
       const staticEquivalents = this.IDENTITY_MAPPING[leadId] || this.IDENTITY_MAPPING[leadId.replace(/\D/g, '')];
       if (staticEquivalents) {
         staticEquivalents.forEach(id => ids.add(id));
@@ -1222,23 +1808,30 @@ export const db = {
 
       let lead = await this.getLeadById(leadId);
       if (!lead) {
+        const variants = getPhoneVariants(leadId);
         if (useSupabase) {
+          const orClauses = variants.flatMap(v => [`phone.eq.${v}`, `whatsapp_lid.eq.${v}`]).join(',');
           const res = await runSupabaseQuery((c) => 
             c.from('leads')
              .select('*')
-             .or(`phone.eq.${leadId},whatsapp_lid.eq.${leadId}`)
+             .or(orClauses)
              .maybeSingle()
           );
           if (res && !res.error && res.data) lead = res.data;
         } else {
-          const sDb = getSqliteDb();
-          lead = sDb.prepare('SELECT * FROM leads WHERE phone = ? OR whatsapp_lid = ?').get(leadId, leadId);
-          if (lead) {
-            lead = {
-              ...lead,
-              tags: typeof lead.tags === 'string' ? JSON.parse(lead.tags) : lead.tags,
-              bot_active: Boolean(lead.bot_active)
-            };
+          const sDb = getSqliteDbOrNull();
+          if (sDb) {
+            for (const v of variants) {
+              const row = sDb.prepare('SELECT * FROM leads WHERE phone = ? OR whatsapp_lid = ?').get(v, v);
+              if (row) {
+                lead = {
+                  ...row,
+                  tags: typeof row.tags === 'string' ? JSON.parse(row.tags) : row.tags,
+                  bot_active: Boolean(row.bot_active)
+                };
+                break;
+              }
+            }
           }
         }
       }
@@ -1247,15 +1840,9 @@ export const db = {
         if (lead.phone) ids.add(lead.phone);
         if (lead.whatsapp_lid) ids.add(lead.whatsapp_lid);
 
-        const cleanPhone = lead.phone ? lead.phone.replace(/\D/g, '') : '';
-        if (cleanPhone) {
-          ids.add(cleanPhone);
-          const nineDigits = cleanPhone.startsWith('51') && cleanPhone.length > 2 ? cleanPhone.substring(2) : cleanPhone;
-          if (nineDigits.length === 9) {
-            ids.add(nineDigits);
-            ids.add('51' + nineDigits);
-          }
-        }
+        getPhoneVariants(lead.id).forEach(v => ids.add(v));
+        if (lead.phone) getPhoneVariants(lead.phone).forEach(v => ids.add(v));
+        if (lead.whatsapp_lid) getPhoneVariants(lead.whatsapp_lid).forEach(v => ids.add(v));
       }
     } catch (e) {
       console.error('Error finding associated IDs:', e);
@@ -1272,9 +1859,11 @@ export const db = {
       if (error) throw error;
       messages = data || [];
     } else {
-      const db = getSqliteDb();
-      const placeholders = ids.map(() => '?').join(',');
-      messages = db.prepare(`SELECT * FROM chat_messages WHERE lead_id IN (${placeholders}) ORDER BY created_at ASC`).all(...ids);
+      const db = getSqliteDbOrNull();
+      if (db) {
+        const placeholders = ids.map(() => '?').join(',');
+        messages = db.prepare(`SELECT * FROM chat_messages WHERE lead_id IN (${placeholders}) ORDER BY created_at ASC`).all(...ids);
+      }
     }
     
     // Deduplicar mensajes por ID e ignorar mensajes idénticos duplicados por webhook/polling en ventana de 15s
@@ -1300,51 +1889,83 @@ export const db = {
     return uniqueMessages;
   },
 
+  async getMessageById(messageId: string): Promise<any> {
+    if (!messageId) return null;
+    if (useSupabase) {
+      const { data } = await getSupabase()
+        .from('chat_messages')
+        .select('*')
+        .eq('id', messageId)
+        .maybeSingle();
+      return data || null;
+    } else {
+      const db = getSqliteDbOrNull();
+      if (db) {
+        return db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId) || null;
+      }
+      return null;
+    }
+  },
+
   async addMessage(leadId: string, sender: string, message: string, customId?: string): Promise<any> {
     const normalizedId = await this.normalizeLeadId(leadId);
     const id = customId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const nowIso = new Date().toISOString();
     
     // Filtro anti-duplicados en base de datos: prevenir inserción idéntica en ventana de 15 segundos
     if (!useSupabase) {
-      const db = getSqliteDb();
-      const recent = db.prepare(`
-        SELECT * FROM chat_messages 
-        WHERE lead_id = ? AND sender = ? AND message = ? 
-        ORDER BY created_at DESC LIMIT 1
-      `).get(normalizedId, sender, message) as any;
+      const db = getSqliteDbOrNull();
+      if (db) {
+        const recent = db.prepare(`
+          SELECT * FROM chat_messages 
+          WHERE lead_id = ? AND sender = ? AND message = ? 
+          ORDER BY created_at DESC LIMIT 1
+        `).get(normalizedId, sender, message) as any;
 
-      if (recent && recent.created_at) {
-        let isoStr = recent.created_at;
-        if (typeof isoStr === 'string') {
-          if (!isoStr.includes('T')) isoStr = isoStr.replace(' ', 'T');
-          if (!isoStr.endsWith('Z') && !isoStr.match(/[+-]\d{2}:?\d{2}$/)) isoStr += 'Z';
-        }
-        const diffSec = Math.abs(Date.now() - new Date(isoStr).getTime()) / 1000;
-        if (diffSec <= 15) {
-          console.log(`[db.addMessage] 🛡️ Mensaje duplicado interceptado y omitido (${diffSec.toFixed(1)}s): "${message.slice(0, 30)}"`);
-          return recent;
+        if (recent && recent.created_at) {
+          let isoStr = recent.created_at;
+          if (typeof isoStr === 'string') {
+            if (!isoStr.includes('T')) isoStr = isoStr.replace(' ', 'T');
+            if (!isoStr.endsWith('Z') && !isoStr.match(/[+-]\d{2}:?\d{2}$/)) isoStr += 'Z';
+          }
+          const diffSec = Math.abs(Date.now() - new Date(isoStr).getTime()) / 1000;
+          if (diffSec <= 15) {
+            console.log(`[db.addMessage] 🛡️ Mensaje duplicado interceptado y omitido (${diffSec.toFixed(1)}s): "${message.slice(0, 30)}"`);
+            return recent;
+          }
         }
       }
     }
 
+    let insertedMsg: any = null;
     if (useSupabase) {
       const { data, error } = await getSupabase().from('chat_messages').upsert({
         id,
         lead_id: normalizedId,
         sender,
         message,
-        is_read: false
+        is_read: false,
+        created_at: nowIso
       }, { onConflict: 'id' }).select().single();
       if (error) throw error;
-      return data;
+      insertedMsg = data;
+
+      // Actualizar updated_at en Supabase para posicionar el lead arriba en la lista
+      await runSupabaseQuery((c) => c.from('leads').update({ updated_at: nowIso }).eq('id', normalizedId));
     } else {
-      const db = getSqliteDb();
-      db.prepare(`
-        INSERT OR IGNORE INTO chat_messages (id, lead_id, sender, message, is_read)
-        VALUES (?, ?, ?, ?, 0)
-      `).run(id, normalizedId, sender, message);
-      return db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id);
+      const db = getSqliteDbOrNull();
+      if (db) {
+        db.prepare(`
+          INSERT OR IGNORE INTO chat_messages (id, lead_id, sender, message, is_read, created_at)
+          VALUES (?, ?, ?, ?, 0, ?)
+        `).run(id, normalizedId, sender, message, nowIso);
+
+        // Actualizar updated_at en SQLite
+        db.prepare('UPDATE leads SET updated_at = ? WHERE id = ?').run(nowIso, normalizedId);
+        insertedMsg = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id);
+      }
     }
+    return insertedMsg;
   },
 
   async markMessagesAsRead(leadId: string): Promise<void> {
@@ -1358,7 +1979,7 @@ export const db = {
         .eq('sender', 'customer');
       if (error) throw error;
     } else {
-      const db = getSqliteDb();
+      const db = requireSqliteDb('markMessagesAsRead');
       const placeholders = ids.map(() => '?').join(',');
       db.prepare(`UPDATE chat_messages SET is_read = 1 WHERE lead_id IN (${placeholders}) AND sender = 'customer'`).run(...ids);
     }
@@ -1371,7 +1992,7 @@ export const db = {
       const { error } = await getSupabase().from('chat_messages').delete().in('lead_id', ids);
       if (error) throw error;
     } else {
-      const db = getSqliteDb();
+      const db = requireSqliteDb('deleteChatMessages');
       const placeholders = ids.map(() => '?').join(',');
       db.prepare(`DELETE FROM chat_messages WHERE lead_id IN (${placeholders})`).run(...ids);
     }
@@ -1383,15 +2004,21 @@ export const db = {
     }
 
     if (useSupabase) {
-      const { error: msgError } = await getSupabase().from('chat_messages').delete().eq('lead_id', leadId);
-      if (msgError) throw msgError;
-
+      await runSupabaseQuery((c) => c.from('chat_messages').delete().eq('lead_id', leadId));
+      await runSupabaseQuery((c) => c.from('knowledge_gaps').delete().eq('lead_id', leadId));
+      await runSupabaseQuery((c) => c.from('lead_notes').delete().eq('lead_id', leadId));
+      await runSupabaseQuery((c) => c.from('reminders').delete().eq('lead_id', leadId));
       const { error: leadError } = await getSupabase().from('leads').delete().eq('id', leadId);
       if (leadError) throw leadError;
     } else {
       const db = getSqliteDb();
-      db.prepare('DELETE FROM chat_messages WHERE lead_id = ?').run(leadId);
-      db.prepare('DELETE FROM leads WHERE id = ?').run(leadId);
+      const remove = db.transaction(() => {
+        db.prepare('DELETE FROM chat_messages WHERE lead_id = ?').run(leadId);
+        try { db.prepare('DELETE FROM lead_notes WHERE lead_id = ?').run(leadId); } catch (e) {}
+        try { db.prepare('DELETE FROM reminders WHERE lead_id = ?').run(leadId); } catch (e) {}
+        db.prepare('DELETE FROM leads WHERE id = ?').run(leadId);
+      });
+      remove();
     }
   },
 
@@ -1517,9 +2144,14 @@ export const db = {
       const res = await runSupabaseQuery((c) => c.from('system_settings').select('value').eq('key', key).maybeSingle());
       if (res && !res.error && res.data) return res.data.value;
     }
-    const db = getSqliteDb();
-    const row = db.prepare('SELECT value FROM system_settings WHERE key = ?').get(key) as any;
-    return row ? row.value : null;
+    const db = getSqliteDbOrNull();
+    if (db) {
+      try {
+        const row = db.prepare('SELECT value FROM system_settings WHERE key = ?').get(key) as any;
+        return row ? row.value : null;
+      } catch (e) {}
+    }
+    return null;
   },
 
   async setSystemSetting(key: string, value: string): Promise<void> {
@@ -1530,14 +2162,18 @@ export const db = {
         updated_at: new Date().toISOString()
       }, { onConflict: 'key' }));
     }
-    const db = getSqliteDb();
-    db.prepare(`
-      INSERT INTO system_settings (key, value)
-      VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updated_at = CURRENT_TIMESTAMP
-    `).run(key, value);
+    const db = getSqliteDbOrNull();
+    if (db) {
+      try {
+        db.prepare(`
+          INSERT INTO system_settings (key, value)
+          VALUES (?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = CURRENT_TIMESTAMP
+        `).run(key, value);
+      } catch (e) {}
+    }
   },
 
   async getBroadcasts(): Promise<any[]> {
@@ -1549,7 +2185,7 @@ export const db = {
     const rows = db.prepare('SELECT * FROM broadcasts ORDER BY created_at DESC').all();
     return rows.map((r: any) => ({
       ...r,
-      targets: JSON.parse(r.targets)
+      targets: safeParseJson<string[]>(r.targets, [])
     }));
   },
 
@@ -1563,7 +2199,7 @@ export const db = {
     if (!row) return null;
     return {
       ...row,
-      targets: JSON.parse(row.targets)
+      targets: safeParseJson<string[]>(row.targets, [])
     };
   },
 
@@ -1663,24 +2299,30 @@ export const db = {
     }));
   },
 
-  async addAIRule(rule: { id?: string; title: string; instruction: string; category?: string }): Promise<any> {
+  async addAIRule(rule: { id?: string; title: string; instruction: string; category?: string; is_active?: boolean }): Promise<any> {
     const id = rule.id || `rule-${Date.now()}`;
     const category = rule.category || 'General';
 
     if (useSupabase) {
-      const res = await runSupabaseQuery((c) => c.from('ai_rules').insert({
+      const res = await runSupabaseQuery((c) => c.from('ai_rules').upsert({
         id,
         title: rule.title,
         instruction: rule.instruction,
         category,
-        is_active: true
+        is_active: rule.is_active !== undefined ? rule.is_active : true
       }).select().single());
       if (res && !res.error) return res.data;
     }
 
     const db = getSqliteDb();
-    db.prepare('INSERT INTO ai_rules (id, title, instruction, category, is_active) VALUES (?, ?, ?, ?, 1)')
-      .run(id, rule.title, rule.instruction, category);
+    db.prepare(`
+      INSERT INTO ai_rules (id, title, instruction, category, is_active)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        instruction = excluded.instruction,
+        category = excluded.category
+    `).run(id, rule.title, rule.instruction, category, rule.is_active !== undefined ? (rule.is_active ? 1 : 0) : 1);
     return { id, title: rule.title, instruction: rule.instruction, category, is_active: true };
   },
 
@@ -1701,9 +2343,321 @@ export const db = {
       await runSupabaseQuery((c) => c.from('ai_rules').delete().eq('id', id));
     }
 
-    const db = getSqliteDb();
-    db.prepare('DELETE FROM ai_rules WHERE id = ?').run(id);
+    const db = getSqliteDbOrNull();
+    if (db) {
+      try {
+        db.prepare('DELETE FROM ai_rules WHERE id = ?').run(id);
+      } catch (e) {}
+    }
     return true;
+  },
+
+  async deleteFlow(id: string): Promise<void> {
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('flows').delete().eq('id', id));
+    }
+    const db = getSqliteDbOrNull();
+    if (db) {
+      try {
+        db.prepare('DELETE FROM flows WHERE id = ?').run(id);
+      } catch (e) {}
+    }
+  },
+
+  // --- WHATSAPP STATUS / STORIES LIBRARY & SCHEDULES ---
+  async getStatusLibraryItems(): Promise<any[]> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('whatsapp_status_library').select('*').order('created_at', { ascending: false }));
+      if (res && !res.error && res.data) {
+        return res.data.map((item: any) => ({
+          ...item,
+          tags: typeof item.tags === 'string' ? JSON.parse(item.tags || '[]') : (item.tags || [])
+        }));
+      }
+    }
+
+    const db = getSqliteDbOrNull();
+    if (!db) return [];
+    try {
+      const rows = db.prepare('SELECT * FROM whatsapp_status_library ORDER BY created_at DESC').all();
+      return (rows || []).map((item: any) => ({
+        ...item,
+        tags: typeof item.tags === 'string' ? JSON.parse(item.tags || '[]') : (item.tags || [])
+      }));
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async createStatusLibraryItem(item: {
+    id?: string;
+    title: string;
+    product_name?: string;
+    category?: string;
+    tags?: string[];
+    media_url: string;
+    media_type?: string;
+    caption?: string;
+    internal_notes?: string;
+  }): Promise<any> {
+    const id = item.id || `status-lib-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const tagsArr = item.tags || [];
+    const tagsStr = JSON.stringify(tagsArr);
+    const mediaType = item.media_type || (item.media_url?.match(/\.(mp4|mov|webm|avi)$/i) ? 'video' : 'image');
+    const nowIso = new Date().toISOString();
+
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('whatsapp_status_library').upsert({
+        id,
+        title: item.title,
+        product_name: item.product_name || '',
+        category: item.category || 'General',
+        tags: tagsArr,
+        media_url: item.media_url,
+        media_type: mediaType,
+        caption: item.caption || '',
+        internal_notes: item.internal_notes || '',
+        created_at: nowIso
+      }).select().single());
+      if (res && !res.error) return res.data;
+    }
+
+    const db = getSqliteDbOrNull();
+    if (db) {
+      db.prepare(`
+        INSERT INTO whatsapp_status_library (id, title, product_name, category, tags, media_url, media_type, caption, internal_notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          product_name = excluded.product_name,
+          category = excluded.category,
+          tags = excluded.tags,
+          media_url = excluded.media_url,
+          media_type = excluded.media_type,
+          caption = excluded.caption,
+          internal_notes = excluded.internal_notes
+      `).run(
+        id,
+        item.title,
+        item.product_name || '',
+        item.category || 'General',
+        tagsStr,
+        item.media_url,
+        mediaType,
+        item.caption || '',
+        item.internal_notes || '',
+        nowIso
+      );
+      return { id, ...item, tags: tagsArr, media_type: mediaType, created_at: nowIso };
+    }
+    return { id, ...item, tags: tagsArr, media_type: mediaType, created_at: nowIso };
+  },
+
+  async deleteStatusLibraryItem(id: string): Promise<boolean> {
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('whatsapp_status_library').delete().eq('id', id));
+    }
+    const db = getSqliteDbOrNull();
+    if (db) {
+      try {
+        db.prepare('DELETE FROM whatsapp_status_library WHERE id = ?').run(id);
+      } catch (e) {}
+    }
+    return true;
+  },
+
+  async getStatusSchedules(): Promise<any[]> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('whatsapp_status_schedules').select('*').order('created_at', { ascending: false }));
+      if (res && !res.error && res.data) return res.data;
+    }
+
+    const db = getSqliteDbOrNull();
+    if (!db) return [];
+    try {
+      return db.prepare('SELECT * FROM whatsapp_status_schedules ORDER BY created_at DESC').all() || [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async createStatusSchedule(sched: {
+    id?: string;
+    library_id?: string;
+    media_url: string;
+    media_type?: string;
+    caption?: string;
+    scheduled_at?: string | null;
+    recurrence_type?: string;
+    recurrence_days?: string[] | string;
+    status?: string;
+    published_at?: string | null;
+    error_message?: string | null;
+  }): Promise<any> {
+    const id = sched.id || `status-sch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const mediaType = sched.media_type || (sched.media_url?.match(/\.(mp4|mov|webm|avi)$/i) ? 'video' : 'image');
+    const status = sched.status || (sched.scheduled_at ? 'pending' : 'published');
+    const recurrenceType = sched.recurrence_type || 'none';
+    const recurrenceDays = typeof sched.recurrence_days === 'string' ? sched.recurrence_days : JSON.stringify(sched.recurrence_days || []);
+    const nowIso = new Date().toISOString();
+
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('whatsapp_status_schedules').upsert({
+        id,
+        library_id: sched.library_id || null,
+        media_url: sched.media_url,
+        media_type: mediaType,
+        caption: sched.caption || '',
+        scheduled_at: sched.scheduled_at || null,
+        recurrence_type: recurrenceType,
+        recurrence_days: recurrenceDays,
+        status,
+        published_at: sched.published_at || (status === 'published' ? nowIso : null),
+        error_message: sched.error_message || null,
+        created_at: nowIso
+      }).select().single());
+      if (res && !res.error) return res.data;
+    }
+
+    const db = getSqliteDbOrNull();
+    if (db) {
+      db.prepare(`
+        INSERT INTO whatsapp_status_schedules (id, library_id, media_url, media_type, caption, scheduled_at, recurrence_type, recurrence_days, status, published_at, error_message, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        sched.library_id || null,
+        sched.media_url,
+        mediaType,
+        sched.caption || '',
+        sched.scheduled_at || null,
+        recurrenceType,
+        recurrenceDays,
+        status,
+        sched.published_at || (status === 'published' ? nowIso : null),
+        sched.error_message || null,
+        nowIso
+      );
+      return { id, ...sched, media_type: mediaType, recurrence_type: recurrenceType, recurrence_days: recurrenceDays, status, created_at: nowIso };
+    }
+    return { id, ...sched, media_type: mediaType, recurrence_type: recurrenceType, recurrence_days: recurrenceDays, status, created_at: nowIso };
+  },
+
+  async updateStatusSchedule(id: string, updates: {
+    status?: string;
+    published_at?: string | null;
+    error_message?: string | null;
+    scheduled_at?: string | null;
+    recurrence_type?: string;
+    recurrence_days?: string;
+    caption?: string;
+  }): Promise<any> {
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('whatsapp_status_schedules').update(updates).eq('id', id).select().single());
+      if (res && !res.error) return res.data;
+    }
+
+    const db = getSqliteDbOrNull();
+    if (db) {
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const [k, v] of Object.entries(updates)) {
+        sets.push(`${k} = ?`);
+        vals.push(v);
+      }
+      if (sets.length > 0) {
+        vals.push(id);
+        db.prepare(`UPDATE whatsapp_status_schedules SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      }
+      return db.prepare('SELECT * FROM whatsapp_status_schedules WHERE id = ?').get(id);
+    }
+  },
+
+  async deleteStatusSchedule(id: string): Promise<boolean> {
+    if (useSupabase) {
+      await runSupabaseQuery((c) => c.from('whatsapp_status_schedules').delete().eq('id', id));
+    }
+    const db = getSqliteDbOrNull();
+    if (db) {
+      try {
+        db.prepare('DELETE FROM whatsapp_status_schedules WHERE id = ?').run(id);
+      } catch (e) {}
+    }
+    return true;
+  },
+
+  async getPendingStatusSchedules(): Promise<any[]> {
+    const nowIso = new Date().toISOString();
+    if (useSupabase) {
+      const res = await runSupabaseQuery((c) => 
+        c.from('whatsapp_status_schedules')
+         .select('*')
+         .eq('status', 'pending')
+         .lte('scheduled_at', nowIso)
+      );
+      if (res && !res.error && res.data) return res.data;
+    }
+
+    const db = getSqliteDbOrNull();
+    if (!db) return [];
+    try {
+      return db.prepare("SELECT * FROM whatsapp_status_schedules WHERE status = 'pending' AND scheduled_at <= ?").all(nowIso) || [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async markStatusSchedulePublished(id: string, error?: string): Promise<void> {
+    const nowIso = new Date().toISOString();
+    if (error) {
+      await this.updateStatusSchedule(id, {
+        status: 'failed',
+        error_message: error
+      });
+      return;
+    }
+
+    // Obtener el registro para verificar si tiene recurrencia
+    let schedule: any = null;
+    const db = getSqliteDbOrNull();
+    if (db) {
+      schedule = db.prepare('SELECT * FROM whatsapp_status_schedules WHERE id = ?').get(id);
+    }
+    if (!schedule && useSupabase) {
+      const res = await runSupabaseQuery((c) => c.from('whatsapp_status_schedules').select('*').eq('id', id).maybeSingle());
+      if (res && res.data) schedule = res.data;
+    }
+
+    if (schedule && schedule.recurrence_type && schedule.recurrence_type !== 'none') {
+      const baseDate = schedule.scheduled_at ? new Date(schedule.scheduled_at) : new Date();
+      const nextDate = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000); // Siguiente día
+
+      if (schedule.recurrence_type === 'weekdays') {
+        const dayOfWeek = nextDate.getDay(); // 0 = Domingo, 6 = Sábado
+        if (dayOfWeek === 6) { // Si cae sábado, mover al lunes (+2 días)
+          nextDate.setDate(nextDate.getDate() + 2);
+        } else if (dayOfWeek === 0) { // Si cae domingo, mover al lunes (+1 día)
+          nextDate.setDate(nextDate.getDate() + 1);
+        }
+      }
+
+      console.log(`[Status DB] 🔁 Estado recurrente ${id} (${schedule.recurrence_type}) publicado. Próxima ejecución: ${nextDate.toISOString()}`);
+
+      // Mantener en status 'pending' con la nueva fecha de ejecución agendada
+      await this.updateStatusSchedule(id, {
+        status: 'pending',
+        scheduled_at: nextDate.toISOString(),
+        published_at: nowIso,
+        error_message: null
+      });
+    } else {
+      // Publicación no recurrente
+      await this.updateStatusSchedule(id, {
+        status: 'published',
+        published_at: nowIso,
+        error_message: null
+      });
+    }
   }
 };
 

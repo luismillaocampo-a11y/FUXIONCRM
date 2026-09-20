@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Upload, FileCode, Plus, RefreshCw, Trash2, FileText, Image, Video } from 'lucide-react';
+import { Upload, FileCode, Plus, RefreshCw, Trash2, FileText, Image, Video, Undo2, AlertTriangle } from 'lucide-react';
 
 interface KnowledgeBaseViewProps {
   uploadTitle: string;
@@ -14,6 +14,9 @@ interface KnowledgeBaseViewProps {
   kbItems: any[];
   handleFileUpload: (e: React.FormEvent) => void;
   handleDeleteKB: (id: string) => void;
+  handleWipeAllKB: () => void;
+  wipedCount: number;
+  handleUndoWipeKB: () => void;
 }
 
 export default function KnowledgeBaseView({
@@ -26,7 +29,10 @@ export default function KnowledgeBaseView({
   uploading,
   kbItems,
   handleFileUpload,
-  handleDeleteKB
+  handleDeleteKB,
+  handleWipeAllKB,
+  wipedCount,
+  handleUndoWipeKB
 }: KnowledgeBaseViewProps) {
   return (
     <div className="flex-1 flex flex-col md:flex-row gap-8 min-h-0">
@@ -84,7 +90,7 @@ export default function KnowledgeBaseView({
           <button
             type="submit"
             disabled={!uploadFile || uploading}
-            className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-650 text-white transition-all shadow-[0_4px_12px_rgba(16,185,129,0.1)]"
+            className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-600 text-white transition-all shadow-[0_4px_12px_rgba(16,185,129,0.1)]"
           >
             {uploading ? (
               <>
@@ -99,10 +105,44 @@ export default function KnowledgeBaseView({
             )}
           </button>
         </form>
+
+        {/* Zona de peligro: vaciar base con respaldo + Deshacer */}
+        <div className="p-4 bg-[#0c0f1d] border border-rose-500/20 rounded-xl flex flex-col gap-2">
+          <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5" /> Zona de peligro
+          </span>
+          <p className="text-[10px] text-slate-500 leading-relaxed">
+            Vacía toda la biblioteca ({kbItems.length} documento(s)). Antes se descarga un respaldo JSON y podrás Deshacer.
+          </p>
+          <button
+            type="button"
+            onClick={handleWipeAllKB}
+            disabled={kbItems.length === 0}
+            className="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold rounded-lg bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 disabled:hover:bg-rose-500/10 text-rose-300 border border-rose-500/25 transition-all"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Vaciar base completa
+          </button>
+        </div>
       </div>
 
       {/* Cuadrícula de Recursos */}
-      <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-1 xl:grid-cols-2 gap-6 self-start">
+      <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-1 xl:grid-cols-2 gap-6 self-start content-start">
+        {wipedCount > 0 && (
+          <div className="col-span-full p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex flex-col sm:flex-row sm:items-center gap-3">
+            <p className="text-xs text-amber-200 flex-1">
+              Base vaciada ({wipedCount} documento(s)). El respaldo JSON se descargó a tu PC. Puedes deshacer hasta recargar la página.
+            </p>
+            <button
+              type="button"
+              onClick={handleUndoWipeKB}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shrink-0"
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+              Deshacer
+            </button>
+          </div>
+        )}
         {kbItems.map((item) => (
           <div key={item.id} className="p-6 bg-[#0c0f1d] border border-slate-800/80 rounded-xl flex flex-col gap-4 relative group">
             <button

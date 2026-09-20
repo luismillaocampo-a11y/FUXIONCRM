@@ -6,9 +6,15 @@ CREATE TABLE IF NOT EXISTS leads (
     name TEXT,
     phone TEXT UNIQUE NOT NULL,
     whatsapp_lid TEXT,
+    real_phone TEXT, -- teléfono real cuando phone guarda un LID temporal
+    last_product TEXT, -- último producto recomendado por el bot (Fase 1 pedidos)
+    last_order_qty INTEGER, -- unidades del último pedido congelado (Fase 2)
+    last_order_total REAL, -- total S/ del último pedido congelado (Fase 2)
+    last_order_at TIMESTAMP, -- cuándo se congeló el pedido
     status TEXT NOT NULL DEFAULT 'New', -- 'New', 'Engaged', 'Pending Verification', 'Converted'
     tags TEXT NOT NULL DEFAULT '[]', -- JSON array of tags: '["warm", "needs-followup"]'
     bot_active INTEGER NOT NULL DEFAULT 1, -- 1 = active, 0 = paused/shadow mode
+    channel TEXT NOT NULL DEFAULT 'whatsapp', -- 'whatsapp' | 'instagram' | 'facebook'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -57,8 +63,16 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Required for Supabase Realtime postgres_changes on chat_messages
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+-- Required for Supabase Realtime postgres_changes on chat_messages (idempotente)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'chat_messages'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+  END IF;
+END $$;
 
 -- WhatsApp Sessions Table (stores auth state for Baileys)
 CREATE TABLE IF NOT EXISTS whatsapp_sessions (
@@ -113,6 +127,46 @@ CREATE TABLE IF NOT EXISTS users (
     password TEXT NOT NULL,
     name TEXT DEFAULT '',
     avatar_url TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI Behavior Rules Table (mirrors SQLite ai_rules in lib/db.ts)
+CREATE TABLE IF NOT EXISTS ai_rules (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    instruction TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'General',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- WhatsApp Status Library Table (mirrors SQLite whatsapp_status_library)
+CREATE TABLE IF NOT EXISTS whatsapp_status_library (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    product_name TEXT,
+    category TEXT,
+    tags JSONB DEFAULT '[]',
+    media_url TEXT NOT NULL,
+    media_type TEXT DEFAULT 'image',
+    caption TEXT,
+    internal_notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- WhatsApp Status Schedules Table (mirrors SQLite whatsapp_status_schedules)
+CREATE TABLE IF NOT EXISTS whatsapp_status_schedules (
+    id TEXT PRIMARY KEY,
+    library_id TEXT,
+    media_url TEXT NOT NULL,
+    media_type TEXT DEFAULT 'image',
+    caption TEXT,
+    scheduled_at TIMESTAMP,
+    recurrence_type TEXT DEFAULT 'none',
+    recurrence_days JSONB DEFAULT '[]',
+    status TEXT DEFAULT 'pending',
+    published_at TIMESTAMP,
+    error_message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

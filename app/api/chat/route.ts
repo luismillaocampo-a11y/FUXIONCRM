@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { queryKnowledgeBase } from '@/lib/gemini';
+import { queryKnowledgeBase, sanitizeAiReply, stripInternalTagsForSending } from '@/lib/gemini';
 import { alertKnowledgeGap, alertPaymentVerification } from '@/lib/notifications';
+import { requireSession } from '@/lib/api-auth';
+
+const MAX_MESSAGE_LENGTH = 2000;
+const MAX_ID_LENGTH = 128;
 
 export async function POST(request: Request) {
+  const auth = requireSession(request);
+  if ('response' in auth) return auth.response;
   try {
     const body = await request.json();
     const { leadId, message, name, phone } = body;
@@ -12,13 +18,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing leadId or message' }, { status: 400 });
     }
 
+    if (typeof leadId !== 'string' || typeof message !== 'string') {
+      return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
+    }
+
+    const cleanLeadId = leadId.slice(0, MAX_ID_LENGTH);
+    const cleanMessage = message.trim().slice(0, MAX_MESSAGE_LENGTH);
+    if (!cleanMessage) {
+      return NextResponse.json({ error: 'Mensaje vacío' }, { status: 400 });
+    }
+
     // 1. Fetch or create lead
-    let lead = await db.getLeadById(leadId);
+    let lead = await db.getLeadById(cleanLeadId);
     if (!lead) {
-      const cleanPhone = phone || leadId;
-      const cleanName = name || `Lead (${cleanPhone.slice(-4)})`;
+      const rawPhone = typeof phone === 'string' ? phone : cleanLeadId;
+      const cleanPhone = rawPhone.replace(/\D/g, '').slice(0, 20) || cleanLeadId;
+      const cleanName = (typeof name === 'string' && name.trim() ? name.trim() : `Lead (${cleanPhone.slice(-4)})`).slice(0, 120);
       lead = await db.upsertLead({
-        id: leadId,
+        id: cleanLeadId,
         name: cleanName,
         phone: cleanPhone,
         status: 'New',
@@ -28,7 +45,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Save user message to log
-    await db.addMessage(leadId, 'customer', message);
+    await db.addMessage(lead.id, 'customer', cleanMessage);
 
     // 3. If bot is paused (Shadow Mode active), do not respond automatically
     if (!lead.bot_active) {
@@ -40,23 +57,23 @@ export async function POST(request: Request) {
     }
 
     // 4. Load recent conversation history for context
-    const history = await db.getMessages(leadId);
+    const history = await db.getMessages(lead.id);
 
-    // 5. Query Knowledge Base using Gemini (with RAG)
-    const reply = await queryKnowledgeBase(message, history);
+    // 5. Query Knowledge Base using Gemini (with RAG) — ya sanitizada, doble barrera
+    const rawReply = await queryKnowledgeBase(cleanMessage, history);
+    const reply = sanitizeAiReply(rawReply);
 
     // 6. Handle Shadow Mode Activation
-    if (reply.trim() === '[UNKNOWN]') {
+    if (reply.trim() === '[UNKNOWN]' || reply.trim().startsWith('[UNKNOWN] ')) {
       // Pause the bot
-      await db.updateLeadBotActive(leadId, false);
+      await db.updateLeadBotActive(lead.id, false);
       
       // Update status to shadow mode / pending verification if they were talking about payments
-      let newStatus = lead.status;
-      if (message.toLowerCase().includes('pay') || message.toLowerCase().includes('comprar') || message.toLowerCase().includes('pago')) {
-        newStatus = 'Pending Verification';
-        await db.updateLeadStatus(leadId, 'Pending Verification');
+      const lowerMsg = cleanMessage.toLowerCase();
+      if (lowerMsg.includes('pay') || lowerMsg.includes('comprar') || lowerMsg.includes('pago')) {
+        await db.updateLeadStatus(lead.id, 'Pending Verification');
       } else {
-        await db.updateLeadStatus(leadId, 'Engaged');
+        await db.updateLeadStatus(lead.id, 'Engaged');
       }
 
       // Create Knowledge Gap Task
@@ -64,17 +81,17 @@ export async function POST(request: Request) {
       // Construct context snippet for the gap
       const contextSnippet = history
         .slice(-4)
-        .map((m: any) => `${m.sender}: ${m.message}`)
+        .map((m: any) => `${m.sender}: ${String(m.message || '').slice(0, 500)}`)
         .join('\n');
       
-      await db.addGap(gapId, leadId, message, contextSnippet);
+      await db.addGap(gapId, lead.id, cleanMessage, contextSnippet);
 
       // Trigger Email Notification for Knowledge Gap
-      await alertKnowledgeGap(lead, message);
+      await alertKnowledgeGap(lead, cleanMessage);
 
       // Save bot's fallback pausing message to logs
       const fallbackReply = 'Lo siento, no tengo esa información en este momento. Un agente humano revisará su pregunta y le responderá a la brevedad.';
-      await db.addMessage(leadId, 'bot', fallbackReply);
+      await db.addMessage(lead.id, 'bot', fallbackReply);
 
       return NextResponse.json({
         reply: fallbackReply,
@@ -83,34 +100,12 @@ export async function POST(request: Request) {
       });
     }
 
-    // 7. Save bot reply to log
-    await db.addMessage(leadId, 'bot', reply);
-
-    // 8. Dynamic triggers (e.g. check if client is ready for payment verification)
-    // If the customer mentions yape, plin, receipt, payment validation, or transfer, and the bot answered
-    const paymentKeywords = ['yape', 'plin', 'transferencia', 'banco', 'pago', 'recibo', 'comprobante', 'voucher', 'pagar'];
-    const lowerMsg = message.toLowerCase();
-    const isPaymentTrigger = paymentKeywords.some(keyword => lowerMsg.includes(keyword));
-
-    if (isPaymentTrigger && lead.status !== 'Pending Verification') {
-      // Update status to Pending Verification
-      await db.updateLeadStatus(leadId, 'Pending Verification');
-      
-      // Assign tag "needs-verification"
-      const currentTags = lead.tags || [];
-      if (!currentTags.includes('needs-verification')) {
-        await db.updateLeadTags(leadId, [...currentTags, 'needs-verification']);
-      }
-
-      // Trigger Alert Email Notification for Payment Verification
-      await alertPaymentVerification({
-        ...lead,
-        status: 'Pending Verification'
-      });
-    }
+    // 7. Save bot reply to log (solo visible, sin tags internos)
+    const visibleReply = stripInternalTagsForSending(reply);
+    await db.addMessage(lead.id, 'bot', visibleReply);
 
     return NextResponse.json({
-      reply,
+      reply: visibleReply,
       bot_active: true
     });
 

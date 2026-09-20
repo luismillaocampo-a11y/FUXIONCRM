@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sendWhatsAppMessageDynamic } from '@/lib/whatsapp-sender';
+import { requireSession } from '@/lib/api-auth';
 
-export async function GET() {
+const MAX_ANSWER_LENGTH = 1000;
+
+export async function GET(request: Request) {
+  const auth = requireSession(request);
+  if ('response' in auth) return auth.response;
   try {
     const gaps = await db.getGaps();
     return NextResponse.json(gaps);
@@ -12,6 +17,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = requireSession(request);
+  if ('response' in auth) return auth.response;
   try {
     const body = await request.json();
     const { id, answer } = body;
@@ -20,18 +27,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing id or answer' }, { status: 400 });
     }
 
+    if (typeof id !== 'string' || typeof answer !== 'string') {
+      return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
+    }
+
+    // La respuesta se inserta en la KB y se envía por WhatsApp: tope de longitud
+    // para evitar contaminar el RAG futuro con contenido gigante.
+    const cleanAnswer = answer.trim().slice(0, MAX_ANSWER_LENGTH);
+    if (!cleanAnswer) {
+      return NextResponse.json({ error: 'Respuesta vacía' }, { status: 400 });
+    }
+
     // 1. Obtener los detalles de la duda para enviar la respuesta al cliente
     const gaps = await db.getGaps();
     const gap = (gaps || []).find((g: any) => g.id === id);
+    if (!gap) {
+      return NextResponse.json({ error: 'Duda no encontrada' }, { status: 404 });
+    }
 
     // 2. Resolves gap: inserts answer to KB, marks resolved, reactivates lead bot.
-    await db.resolveGap(id, answer);
+    await db.resolveGap(id, cleanAnswer);
 
     // 3. Enviar la respuesta directamente al WhatsApp del cliente si tiene teléfono registrado
     if (gap && gap.leads && gap.leads.phone) {
       try {
-        await sendWhatsAppMessageDynamic(gap.leads.phone, answer);
-        await db.addMessage(gap.lead_id || gap.leads.id, 'bot', answer);
+        await sendWhatsAppMessageDynamic(gap.leads.phone, cleanAnswer);
+        await db.addMessage(gap.lead_id || gap.leads.id, 'bot', cleanAnswer);
       } catch (wsErr) {
         console.error('[knowledge/gap] Error enviando respuesta por WhatsApp:', wsErr);
       }
@@ -45,6 +66,8 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = requireSession(request);
+  if ('response' in auth) return auth.response;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

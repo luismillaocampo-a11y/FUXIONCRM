@@ -1,6 +1,38 @@
+# Dependencias y builds locales
 node_modules
-.git
 .next
 dist
 build
+out
+
+# Control de versiones e IDEs
+.git
+.gitignore
+.agents
+.kilo
+.vscode
+.idea
+
+# Base de datos local SQLite y respaldos
+db.sqlite*
+NutraFlow CRM
+backups
+
+# Entornos y credenciales locales
+.env
+.env.local
+.env*.local
+
+# Scripts de escritorio y ejecutables Electron
+electron-main.js
+electron-builder.json
+Iniciar_App_Escritorio.bat
+Iniciar_Asistente_Virtual.bat
+license-server
+scratch
+
+# Documentación y registros
 *.log
+dev.log
+*.md
+MANUAL_OFICIAL_NUTRAFLOW_CRM.html

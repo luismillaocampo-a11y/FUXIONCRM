@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, RefreshCw, UserCheck } from 'lucide-react';
+import { X, RefreshCw, UserCheck, Trash2 } from 'lucide-react';
 
 interface GapsViewProps {
   gaps: any[];
@@ -52,21 +52,35 @@ export default function GapsView({
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-[10px] text-slate-500">{new Date(gap.created_at).toLocaleString()}</span>
-                {gap.status === 'pending' && (
-                  <button
-                    onClick={() => handleDeleteGap(gap.id)}
-                    className="p-1 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                    title="Descartar Duda"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+                <button
+                  onClick={() => handleDeleteGap(gap.id)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all flex items-center gap-1 text-xs"
+                  title="Eliminar Duda de la lista"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-semibold">Borrar</span>
+                </button>
               </div>
             </div>
 
-            <div className="p-3 bg-slate-950/80 rounded-lg border border-slate-850 font-medium text-slate-200">
+            <div className="p-3 bg-slate-950/80 rounded-lg border border-slate-800 font-medium text-slate-200">
               <p className="text-xs text-slate-500 font-semibold mb-1 uppercase tracking-wider">Pregunta sin respuesta:</p>
-              <p className="text-sm">"{gap.question}"</p>
+              <p className="text-sm leading-relaxed">
+                {(() => {
+                  const q = gap.question || '';
+                  if (q.includes('data:audio')) {
+                    const transMatch = q.match(/\[Transcripción de Voz\]:\s*"([^"]+)"/);
+                    if (transMatch) {
+                      return <span className="text-emerald-400 font-medium">🎤 Audio de Voz: "{transMatch[1]}"</span>;
+                    }
+                    return <span className="text-emerald-400 font-medium">🎤 [Nota de Voz en Audio recibida]</span>;
+                  }
+                  if (q.includes('data:image')) {
+                    return <span className="text-indigo-400 font-medium">📷 [Imagen / Comprobante enviado]</span>;
+                  }
+                  return `"${q}"`;
+                })()}
+              </p>
             </div>
 
             {gap.context && (
@@ -84,7 +98,7 @@ export default function GapsView({
                   value={gapAnswers[gap.id] || ''}
                   onChange={(e) => setGapAnswers(prev => ({ ...prev, [gap.id]: e.target.value }))}
                   placeholder="Escribe la respuesta correcta. Esto entrenará a la IA..."
-                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-300 placeholder-slate-650 focus:outline-none focus:border-emerald-500/50"
+                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-emerald-500/50"
                 />
                 <button
                   onClick={() => handleResolveGap(gap.id)}

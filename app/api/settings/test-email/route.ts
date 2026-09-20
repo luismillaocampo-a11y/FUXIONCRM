@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { db } from '@/lib/db';
+import { requireSession } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const auth = requireSession(request);
+  if ('response' in auth) return auth.response;
   try {
     const companyName = (await db.getSystemSetting('client_company_name')) || 'Fuxion Flow';
     const host = (await db.getSystemSetting('smtp_host')) || process.env.SMTP_HOST || 'smtp.gmail.com';

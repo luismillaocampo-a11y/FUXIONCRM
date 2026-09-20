@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
-import { db, supabase } from '@/lib/db';
+import { db } from '@/lib/db';
+import { requireSession } from '@/lib/api-auth';
 import { analyzeMultimediaFile } from '@/lib/gemini';
 import fs from 'fs';
 import path from 'path';
 
-export async function GET() {
+export const dynamic = 'force-dynamic';
+
+const KB_ALLOWED_EXT = new Set(['pdf', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'mov', 'avi', 'mkv']);
+const KB_MAX_BYTES = 20 * 1024 * 1024;
+
+export async function GET(request: Request) {
+  const auth = requireSession(request);
+  if ('response' in auth) return auth.response;
   try {
     const items = await db.getKBItems();
     return NextResponse.json(items);
@@ -14,6 +22,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = requireSession(request);
+  if ('response' in auth) return auth.response;
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -24,8 +34,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    const title = titleInput || file.name;
-    const extension = file.name.split('.').pop()?.toLowerCase();
+    const title = (typeof titleInput === 'string' && titleInput.trim() ? titleInput.trim() : file.name).slice(0, 200);
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!KB_ALLOWED_EXT.has(extension)) {
+      return NextResponse.json({ error: 'Tipo de archivo no permitido' }, { status: 400 });
+    }
     
     // Resolve file type if not provided
     let fileType = fileTypeInput;
@@ -37,6 +50,9 @@ export async function POST(request: Request) {
     }
 
     const bytes = await file.arrayBuffer();
+    if (bytes.byteLength > KB_MAX_BYTES) {
+      return NextResponse.json({ error: 'Archivo muy grande (máx 20MB)' }, { status: 413 });
+    }
     const buffer = Buffer.from(bytes);
 
     // Construct a Base64 Data URI to avoid write operations on read-only serverless filesystems (Vercel)
@@ -49,57 +65,22 @@ export async function POST(request: Request) {
     const mimeType = mimeTypes[fileType] || file.type || 'application/octet-stream';
     const dataUri = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
-    // 1. Intentar subir a Supabase Storage si está configurado
+    // 1. Guardado local en public/uploads (modo local, sin Supabase Storage)
     let publicUrl = dataUri;
-    let uploadedToSupabase = false;
 
-    if (supabase) {
-      try {
-        const uniqueFileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-        // Subir al bucket 'knowledge'
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('knowledge')
-          .upload(uniqueFileName, buffer, {
-            contentType: mimeType,
-            upsert: true
-          });
-
-        if (uploadError) {
-          console.warn('Fallo al subir a Supabase Storage (se usará fallback):', uploadError.message);
-        } else if (uploadData) {
-          const { data: publicUrlData } = supabase.storage
-            .from('knowledge')
-            .getPublicUrl(uniqueFileName);
-
-          if (publicUrlData?.publicUrl) {
-            publicUrl = publicUrlData.publicUrl;
-            uploadedToSupabase = true;
-            console.log(`Guardado en Supabase Storage exitosamente: ${publicUrl}`);
-          }
-        }
-      } catch (err: any) {
-        console.warn('Excepción al subir a Supabase Storage (se usará fallback):', err?.message || err);
+    try {
+      const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
       }
-    }
-
-    // 2. Si no se subió a Supabase, intentar guardado local en desarrollo local
-    if (!uploadedToSupabase) {
-      try {
-        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-        // If we are not on Vercel/Lambda or if uploadsDir already exists and is writable, try writing
-        if (!process.env.VERCEL && !process.env.LAMBDA_TASK_ROOT) {
-          if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-          }
-          const uniqueFileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-          const filePath = path.join(uploadsDir, uniqueFileName);
-          fs.writeFileSync(filePath, buffer);
-          publicUrl = `/uploads/${uniqueFileName}`;
-          console.log(`Saved file locally for development: ${publicUrl}`);
-        }
-      } catch (err) {
-        console.warn('Skipping local filesystem write (read-only environment). Using Data URI instead:', err);
-      }
+      const safeBase = file.name.split('/').pop()!.split('\\').pop()!.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'archivo';
+      const uniqueFileName = `${Date.now()}-${safeBase}`;
+      const filePath = path.join(uploadsDir, uniqueFileName);
+      fs.writeFileSync(filePath, buffer);
+      publicUrl = `/uploads/${uniqueFileName}`;
+      console.log(`Saved file locally for development: ${publicUrl}`);
+    } catch (err) {
+      console.warn('Local filesystem write failed. Using Data URI instead:', err);
     }
 
 
@@ -122,8 +103,15 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = requireSession(request);
+  if ('response' in auth) return auth.response;
   try {
     const { searchParams } = new URL(request.url);
+    // Vaciar base completa (filas; archivos físicos intactos para Deshacer perfecto)
+    if (searchParams.get('all') === 'true') {
+      const deleted = await db.deleteAllKBItems();
+      return NextResponse.json({ success: true, deleted });
+    }
     const id = searchParams.get('id');
 
     if (!id) {

@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
-import { supabaseBrowser } from '@/lib/supabase-browser';
 
 const KanbanView = dynamic(() => import('@/components/dashboard/KanbanView'));
 import ConfirmModal from '@/components/ConfirmModal';
@@ -15,37 +14,7 @@ const DashboardView = dynamic(() => import('@/components/dashboard/DashboardView
 const LeadsView = dynamic(() => import('@/components/dashboard/LeadsView'));
 const GapsView = dynamic(() => import('@/components/dashboard/GapsView'));
 const KnowledgeBaseView = dynamic(() => import('@/components/dashboard/KnowledgeBaseView'));
-
-const IDENTITY_MAPPING: { [key: string]: string[] } = {
-  '51955252932': ['51955252932', '955252932'],
-  '955252932': ['51955252932', '955252932'],
-  '51900401930': ['51900401930', '900401930'],
-  '900401930': ['51900401930', '900401930']
-};
-
-function getAssociatedIds(lead: any): string[] {
-  if (!lead) return [];
-  const ids = new Set<string>();
-  ids.add(lead.id);
-  if (lead.phone) ids.add(lead.phone);
-  if (lead.whatsapp_lid) ids.add(lead.whatsapp_lid);
-
-  const staticEquivs = IDENTITY_MAPPING[lead.id] || (lead.phone && IDENTITY_MAPPING[lead.phone]);
-  if (staticEquivs) {
-    staticEquivs.forEach(id => ids.add(id));
-  }
-
-  const cleanPhone = lead.phone ? lead.phone.replace(/\D/g, '') : '';
-  if (cleanPhone) {
-    ids.add(cleanPhone);
-    const nineDigits = cleanPhone.startsWith('51') && cleanPhone.length > 2 ? cleanPhone.substring(2) : cleanPhone;
-    if (nineDigits.length === 9) {
-      ids.add(nineDigits);
-      ids.add('51' + nineDigits);
-    }
-  }
-  return Array.from(ids);
-}
+import { getAssociatedIds } from '@/lib/lead-utils';
 
 function CRMDashboard() {
   // Pestaña Activa
@@ -101,14 +70,13 @@ function CRMDashboard() {
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
+    message?: string;
     confirmText?: string;
     variant?: 'danger' | 'warning' | 'info';
     onConfirm: () => void;
   }>({
     isOpen: false,
     title: '',
-    message: '',
     onConfirm: () => {}
   });
 
@@ -249,7 +217,34 @@ function CRMDashboard() {
         return;
       }
       const leadsList = Array.isArray(leadsData) ? leadsData : [];
-      setLeads(leadsList);
+      
+      // Detectar si entró un nuevo mensaje no leído en modo local para disparar sonido y banner
+      setLeads(prev => {
+        if (prev.length > 0) {
+          for (const fresh of leadsList) {
+            const old = prev.find((p: any) => p.id === fresh.id);
+            // Si el cliente tiene más mensajes no leídos que antes o su actividad es más reciente
+            const hasNewUnread = fresh.unread_count > (old?.unread_count || 0);
+            const isDifferentActivity = fresh.last_activity && old?.last_activity && new Date(fresh.last_activity).getTime() > new Date(old.last_activity).getTime();
+            
+            if (hasNewUnread || (isDifferentActivity && selectedLeadRef.current?.id !== fresh.id)) {
+              console.log(`🔔 [CRM Alert] Nuevo mensaje detectado para ${fresh.name}`);
+              playNotificationSound();
+              
+              // Disparar banner flotante Toast
+              setActiveNotification({
+                id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+                senderName: fresh.name || `Cliente (${fresh.phone})`,
+                message: fresh.last_message || 'Nuevo mensaje recibido por WhatsApp',
+                leadId: fresh.id
+              });
+              break;
+            }
+          }
+        }
+        if (JSON.stringify(prev) === JSON.stringify(leadsList)) return prev;
+        return leadsList;
+      });
 
       // Calcular estadísticas de ventas en el cliente
       const total = leadsList.length;
@@ -299,11 +294,14 @@ function CRMDashboard() {
         console.error('Error fetching AI status:', e);
       }
 
-      // Mantener seleccionado el lead con los datos frescos
+      // Mantener seleccionado el lead con los datos frescos solo si cambiaron sus datos
       if (selectedLeadRef.current && Array.isArray(leadsData)) {
         const freshLead = leadsData.find((l: any) => l.id === selectedLeadRef.current.id);
         if (freshLead) {
-          setSelectedLead(freshLead);
+          setSelectedLead((prev: any) => {
+            if (prev && JSON.stringify(prev) === JSON.stringify(freshLead)) return prev;
+            return freshLead;
+          });
         }
       }
     } catch (err: any) {
@@ -345,8 +343,7 @@ function CRMDashboard() {
     setConfirmModal({
       isOpen: true,
       title: '¿Eliminar Nota?',
-      message: '¿Estás seguro de que deseas eliminar esta nota del cliente?',
-      confirmText: 'Eliminar Nota',
+      confirmText: 'Eliminar',
       variant: 'danger',
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -397,8 +394,7 @@ function CRMDashboard() {
     setConfirmModal({
       isOpen: true,
       title: '¿Eliminar Recordatorio?',
-      message: '¿Estás seguro de que deseas eliminar este recordatorio programado?',
-      confirmText: 'Eliminar Recordatorio',
+      confirmText: 'Eliminar',
       variant: 'danger',
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -413,35 +409,6 @@ function CRMDashboard() {
         }
       }
     });
-  };
-
-  const calculateScore = (lead: any) => {
-    if (!lead) return 0;
-    let score = 0;
-    let tagsList: string[] = [];
-    try {
-      tagsList = typeof lead.tags === 'string' ? JSON.parse(lead.tags) : (lead.tags || []);
-    } catch (e) {
-      tagsList = lead.tags || [];
-    }
-
-    if (tagsList.includes('hot-lead')) score += 25;
-    if (tagsList.includes('interested') || tagsList.includes('interesado')) score += 10;
-    if (tagsList.includes('needs-verification') || tagsList.includes('ready-to-buy')) score += 15;
-
-    if (lead.status === 'Pending Verification') score += 20;
-    if (lead.status === 'Por Registrar en Web') score += 30;
-    if (lead.status === 'Converted') score += 50;
-
-    if (lead.unread_count > 0) score += 10;
-
-    return Math.min(score, 100);
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 60) return 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10';
-    if (score >= 30) return 'text-amber-400 border-amber-500/20 bg-amber-500/10';
-    return 'text-rose-400 border-rose-500/20 bg-rose-500/10';
   };
 
   const handleStatusChange = async (leadId: string, newStatus: string) => {
@@ -467,6 +434,12 @@ function CRMDashboard() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // Polling local cada 3s (modo local SQLite; sin Realtime).
+  useEffect(() => {
+    const interval = setInterval(fetchData, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   // Polling del estado de WhatsApp cada 15 segundos
@@ -527,165 +500,56 @@ function CRMDashboard() {
     return () => clearTimeout(timer);
   }, [activeNotification]);
 
-  // Suscribirse a cambios en tiempo real en la tabla de leads
-  useEffect(() => {
-    const client = supabaseBrowser;
-    if (!client) return;
-
-    const channel = client
-      .channel('realtime_leads_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'leads'
-        },
-        (payload: any) => {
-          console.log('👥 Cambio detectado en leads en tiempo real:', payload);
-          fetchData();
-        }
-      )
-      .subscribe((status) => {
-        console.log('🔗 Estado canal leads Realtime:', status);
-      });
-
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, []);
-
-  // Suscribirse a mensajes entrantes globales para alertas
-  // Suscribirse a mensajes entrantes globales para alertas y actualizaciones de chat activo
-  useEffect(() => {
-    const client = supabaseBrowser;
-    if (!client) return;
-
-    const channel = client
-      .channel('realtime_global_messages')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages'
-        },
-        (payload: any) => {
-          const newMsg = payload.new;
-          if (!newMsg) return;
-
-          // Si el chat está abierto para este cliente, procesamos el mensaje directamente
-          const isMsgForSelectedLead = selectedLeadRef.current && (() => {
-            const associatedIds = getAssociatedIds(selectedLeadRef.current);
-            return associatedIds.includes(newMsg.lead_id) || 
-                   (newMsg.lead_id && associatedIds.map(id => id.replace(/\D/g, '')).includes(newMsg.lead_id.replace(/\D/g, '')));
-          })();
-
-          if (isMsgForSelectedLead) {
-            setChatMessages((prev) => {
-              if (prev.find((msg) => msg.id === newMsg.id)) {
-                return prev;
-              }
-              return [...prev, newMsg];
-            });
-
-            // Si es un mensaje entrante del cliente, lo marcamos como leído en la base de datos
-            if (newMsg.sender === 'customer') {
-              fetch(`/api/chat/messages?leadId=${encodeURIComponent(newMsg.lead_id)}`, {
-                method: 'PUT'
-              }).then(() => fetchData()).catch(err => console.error('Error auto-marking messages as read:', err));
-            }
-            return;
-          }
-
-          // Si el chat no está abierto para este cliente, solo procesamos mensajes entrantes del cliente
-          if (newMsg.sender !== 'customer') return;
-
-          // Reproducir bip sonoro
-          playNotificationSound();
-
-          // Refrescar lista de clientes para actualizar la burbuja en tiempo real
-          fetchData();
-
-          // Encontrar nombre del lead para la alerta
-          fetch(`/api/leads?_t=${Date.now()}`, { cache: 'no-store' })
-            .then(res => res.json())
-            .then(leadsData => {
-              const list = Array.isArray(leadsData) ? leadsData : [];
-              const senderLead = list.find((l: any) => 
-                l.id === newMsg.lead_id || 
-                l.phone === newMsg.lead_id || 
-                (l.whatsapp_lid && l.whatsapp_lid === newMsg.lead_id)
-              );
-              const senderName = senderLead ? senderLead.name : `Cliente (+${newMsg.lead_id})`;
-              
-              // Disparar banner flotante
-              setActiveNotification({
-                id: `notif-${Date.now()}`,
-                senderName,
-                message: newMsg.message,
-                leadId: senderLead ? senderLead.id : newMsg.lead_id
-              });
-            })
-            .catch(() => {
-              setActiveNotification({
-                id: `notif-${Date.now()}`,
-                senderName: `Cliente (+${newMsg.lead_id})`,
-                message: newMsg.message,
-                leadId: newMsg.lead_id
-              });
-            });
-        }
-      )
-      .subscribe((status) => {
-        console.log('🔗 Estado canal mensajes global Realtime:', status);
-      });
-
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, []);
+  // Suscripciones Realtime eliminadas (modo local): el polling de 3s cubre todo.
+  // (Se quitaron los canales realtime_leads_changes y realtime_global_messages.)
 
   // Cargar mensajes cuando cambia el cliente seleccionado
+  const activeChatLeadIdRef = React.useRef<string | null>(null);
+
   useEffect(() => {
     if (!selectedLead) {
       setChatMessages([]);
       setNewMessageAlert(false);
       setNotes([]);
       setReminders([]);
+      activeChatLeadIdRef.current = null;
       return;
     }
 
     const leadId = selectedLead.id;
+    const isNewLead = activeChatLeadIdRef.current !== leadId;
+    activeChatLeadIdRef.current = leadId;
+
     setNewMessageAlert(false);
     setChatTab('chat');
-    setChatMessages([]); // Limpiar mensajes anteriores de inmediato
+    if (isNewLead) {
+      setChatMessages([]); // Limpiar mensajes anteriores solo al cambiar de cliente
+    }
     fetchMessages(leadId);
     fetchNotes(leadId);
     fetchReminders(leadId);
 
-    // Iniciamos polling de respaldo por si falla la conexión en tiempo real
+    // Iniciamos sincronización ultrarrápida local (1.2s) para recibir mensajes entrantes de WhatsApp al instante
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}&_t=${Date.now()}`, { cache: 'no-store' });
         const data = await res.json();
         const messages = Array.isArray(data) ? data : [];
-        console.log(`[UI pollInterval] leadId: ${leadId}, messages count: ${messages.length}`, messages);
 
-        if (messages.length > chatCountRef.current) {
-          const newMsg = messages[messages.length - 1];
-          console.log('✅ Nuevo mensaje detectado vía polling:', newMsg?.message);
-          setChatMessages(messages);
-          if (newMsg && newMsg.sender !== 'agent') {
-            setNewMessageAlert(true);
+        setChatMessages(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(messages)) return prev;
+          if (messages.length > prev.length) {
+            const last = messages[messages.length - 1];
+            if (last && last.sender !== 'agent') {
+              setNewMessageAlert(true);
+            }
           }
-        } else if (messages.length !== chatCountRef.current) {
-          setChatMessages(messages);
-        }
+          return messages;
+        });
       } catch (err) {
-        console.error('❌ Error en polling:', err);
+        console.error('❌ Error en sincronización de mensajes:', err);
       }
-    }, 3000);
+    }, 1200);
 
     return () => {
       clearInterval(pollInterval);
@@ -696,8 +560,11 @@ function CRMDashboard() {
     try {
       const res = await fetch(`/api/chat/messages?leadId=${encodeURIComponent(leadId)}&_t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
-      console.log(`[UI fetchMessages] leadId: ${leadId}, messages count: ${Array.isArray(data) ? data.length : 0}`, data);
-      setChatMessages(Array.isArray(data) ? data : []);
+      const newMsgs = Array.isArray(data) ? data : [];
+      setChatMessages(prev => {
+        if (JSON.stringify(prev) === JSON.stringify(newMsgs)) return prev;
+        return newMsgs;
+      });
     } catch (err) {
       console.error('Error cargando mensajes:', err);
     }
@@ -735,11 +602,16 @@ function CRMDashboard() {
 
         await fetchMessages(selectedLead.id);
       } else {
-        // Enviar mensaje de agente a WhatsApp
+        // Enviar mensaje de agente: WhatsApp o Red Social según el canal del lead
         const agentMsg = { id: `m-temp-agent-${Date.now()}`, sender: 'agent', message: messageText, created_at: new Date().toISOString() };
         setChatMessages(prev => [...prev, agentMsg]);
 
-        const res = await fetch('/api/whatsapp/send', {
+        const leadIdStr = String(selectedLead.id || '');
+        const leadChannel = String((selectedLead as any).channel || '').toLowerCase();
+        const isSocial = leadChannel === 'instagram' || leadChannel === 'facebook' || leadIdStr.startsWith('ig_') || leadIdStr.startsWith('fb_');
+        const endpoint = isSocial ? '/api/social/send' : '/api/whatsapp/send';
+
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -748,15 +620,17 @@ function CRMDashboard() {
           })
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok || !data?.success) {
-          throw new Error(data?.error || 'Failed to send WhatsApp message');
+          console.warn('[handleSendMessage] Error reportado por servidor:', data?.error);
+          setChatNotice(`❌ No se pudo enviar${isSocial ? ' a Instagram/Facebook (verifica el token en Conexión Redes Sociales)' : ''}: ${data?.error || ''}`);
+          window.setTimeout(() => setChatNotice(null), 6000);
         }
 
         await fetchMessages(selectedLead.id);
       }
     } catch (err) {
-      console.error('Error al enviar mensaje:', err);
+      console.warn('Error al enviar mensaje:', err);
     } finally {
       setChatLoading(false);
     }
@@ -766,9 +640,8 @@ function CRMDashboard() {
     if (!selectedLead) return;
     setConfirmModal({
       isOpen: true,
-      title: '¿Vaciar Historial del Chat?',
-      message: `¿Estás seguro de que deseas eliminar permanentemente el historial de conversación con ${selectedLead.name || selectedLead.phone}?`,
-      confirmText: 'Eliminar Chat',
+      title: `¿Eliminar Chat con ${selectedLead.name || selectedLead.phone}?`,
+      confirmText: 'Eliminar',
       variant: 'danger',
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -800,9 +673,8 @@ function CRMDashboard() {
     if (!selectedLead) return;
     setConfirmModal({
       isOpen: true,
-      title: '¿Eliminar Contacto / Cliente?',
-      message: `¿Estás seguro de que deseas eliminar a ${selectedLead.name || selectedLead.phone} y todo su historial de la base de datos?`,
-      confirmText: 'Eliminar Cliente',
+      title: `¿Eliminar a ${selectedLead.name || selectedLead.phone}?`,
+      confirmText: 'Eliminar',
       variant: 'danger',
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -823,7 +695,7 @@ function CRMDashboard() {
           fetchData();
         } catch (err) {
           console.error('Error al eliminar cliente:', err);
-          setChatNotice('❌ No se pudo eliminar el cliente. Intenta de nuevo.');
+          setChatNotice('❌ No se pudo eliminar el cliente.');
           window.setTimeout(() => setChatNotice(null), 5000);
         } finally {
           setChatLoading(false);
@@ -885,7 +757,7 @@ function CRMDashboard() {
     }
 
     if (!cleanPhone) {
-      alert('Por favor, ingresa un número de teléfono válido.');
+      setErrorMsg('Por favor, ingresa un número de teléfono válido.');
       return;
     }
 
@@ -933,7 +805,7 @@ function CRMDashboard() {
         setUploadTitle('');
         fetchData();
       } else {
-        alert(data.error || 'Fallo al subir el archivo');
+        setErrorMsg(data.error || 'Fallo al subir el archivo');
       }
     } catch (err) {
       console.error('Error en subida:', err);
@@ -947,8 +819,7 @@ function CRMDashboard() {
     setConfirmModal({
       isOpen: true,
       title: '¿Eliminar Recurso de la Biblioteca?',
-      message: '¿Estás seguro de que deseas eliminar este recurso de la biblioteca? Esta acción no se puede deshacer.',
-      confirmText: 'Eliminar Recurso',
+      confirmText: 'Eliminar',
       variant: 'danger',
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -964,9 +835,85 @@ function CRMDashboard() {
     });
   };
 
+    // Papelera del RAG: copia para Deshacer (vive hasta recargar la página)
+  const [lastWipedKb, setLastWipedKb] = useState<any[] | null>(null);
+
+  const downloadKbBackup = (items: any[]) => {
+    try {
+      const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), items }, null, 2)], {
+        type: 'application/json'
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `respaldo-rag-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) {
+      console.error('No se pudo descargar el respaldo:', e);
+    }
+  };
+
+  // Vaciar base completa (con respaldo + Deshacer)
+  const handleWipeAllKB = () => {
+    if (kbItems.length === 0) return;
+    const snapshot = kbItems.map((it: any) => ({
+      id: it.id,
+      title: it.title,
+      file_type: it.file_type,
+      content: it.content,
+      summary: it.summary,
+      file_path: it.file_path
+    }));
+    setConfirmModal({
+      isOpen: true,
+      title: `¿Vaciar toda la base (${snapshot.length} documentos)?`,
+      confirmText: 'Vaciar todo',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          downloadKbBackup(snapshot);
+          const res = await fetch('/api/knowledge?all=true', { method: 'DELETE' });
+          const data = await res.json();
+          if (data.success) {
+            setLastWipedKb(snapshot);
+            fetchData();
+          } else {
+            throw new Error(data.error || 'No se pudo vaciar');
+          }
+        } catch (err: any) {
+          setErrorMsg(err?.message || 'Error al vaciar la base.');
+        }
+      }
+    });
+  };
+
+  // Deshacer vaciado (restaura filas + archivos intactos)
+  const handleUndoWipeKB = async () => {
+    if (!lastWipedKb || lastWipedKb.length === 0) return;
+    try {
+      const res = await fetch('/api/knowledge/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: lastWipedKb })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLastWipedKb(null);
+        fetchData();
+      } else {
+        throw new Error(data.error || 'No se pudo restaurar');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error al restaurar la base.');
+    }
+  };
+
   // Resolver Duda Pendiente
-  const handleResolveGap = async (gapId: string) => {
-    const answer = gapAnswers[gapId];
+  const handleResolveGap = async (gapId: string) => {    const answer = gapAnswers[gapId];
     if (!answer || !answer.trim()) return;
 
     setResolvingGapId(gapId);
@@ -1005,8 +952,7 @@ function CRMDashboard() {
     setConfirmModal({
       isOpen: true,
       title: '¿Descartar Duda Pendiente?',
-      message: '¿Estás seguro de que deseas descartar esta duda? Se eliminará y se reactivará el bot de IA para este cliente.',
-      confirmText: 'Descartar y Reactivar Bot',
+      confirmText: 'Descartar',
       variant: 'warning',
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -1023,7 +969,7 @@ function CRMDashboard() {
               if (freshLead) setSelectedLead(freshLead);
             }
           } else {
-            alert(data.error || 'Error al descartar la duda');
+            setErrorMsg(data.error || 'Error al descartar la duda');
           }
         } catch (err) {
           console.error('Error al descartar duda:', err);
@@ -1036,15 +982,17 @@ function CRMDashboard() {
   const translateStatus = (status: string) => {
     switch (status) {
       case 'New': 
-        return 'Nuevo/Prospecto';
+        return 'Nuevo · sin atender';
       case 'Engaged': 
-        return 'Interactuando/info enviada';
+        return 'En conversación';
       case 'Pending Verification': 
         return 'Esperando pago';
       case 'Por Registrar en Web': 
-        return 'Por Registrar en Web/Por Despachar';
+        return 'Por registrar en web';
       case 'Converted': 
-        return 'Venta Confirmada';
+        return 'Venta cerrada';
+      case 'Archived':
+        return 'Archivado';
       default: 
         return status;
     }
@@ -1073,12 +1021,12 @@ function CRMDashboard() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
       {/* Cabecera Principal */}
-      <header className="h-16 flex items-center justify-between px-8 border-b border-slate-800 bg-[#0c0f1d] shrink-0">
-        <div className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold text-white tracking-tight">Panel de Control</h2>
-          <div className="h-4 w-px bg-slate-800"></div>
+      <header className="h-16 flex items-center justify-between px-4 md:px-8 border-b border-slate-800 bg-[#0c0f1d] shrink-0 overflow-x-auto whitespace-nowrap scrollbar-none">
+        <div className="flex items-center gap-4 shrink-0">
+          <h2 className="text-lg font-semibold text-white tracking-tight shrink-0">Panel de Control</h2>
+          <div className="h-4 w-px bg-slate-800 shrink-0"></div>
           {/* Navegación por Pestañas */}
-          <div className="flex gap-1">
+          <div className="flex gap-1 shrink-0">
             {(['dashboard', 'leads', 'kanban', 'gaps', 'kb'] as const).map((tab) => (
               <button
                 key={tab}
@@ -1090,9 +1038,9 @@ function CRMDashboard() {
                     window.history.pushState({}, '', url.pathname + url.search);
                   }
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 whitespace-nowrap ${
                   activeTab === tab
-                    ? 'bg-slate-850 text-white border border-slate-700'
+                    ? 'bg-slate-800 text-white border border-slate-700'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -1142,22 +1090,6 @@ function CRMDashboard() {
               Nuevo Cliente
             </button>
           )}
-          <Link 
-            href="/whatsapp" 
-            className={`px-4 py-2 rounded border transition text-sm flex items-center gap-2 ${
-              whatsappStatus === 'connected' || whatsappStatus === 'open'
-                ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-600/20'
-                : 'bg-rose-600/10 text-rose-400 border-rose-500/20 hover:bg-rose-600/20'
-            }`}
-          >
-            <span className={`h-2 w-2 rounded-full ${
-              whatsappStatus === 'connected' || whatsappStatus === 'open'
-                ? 'bg-emerald-500 animate-pulse'
-                : 'bg-rose-500 animate-pulse'
-            }`} />
-            <MessageSquare size={16} />
-            <span>WhatsApp</span>
-          </Link>
         </div>
       </header>
 
@@ -1259,6 +1191,9 @@ function CRMDashboard() {
             kbItems={kbItems}
             handleFileUpload={handleFileUpload}
             handleDeleteKB={handleDeleteKB}
+            handleWipeAllKB={handleWipeAllKB}
+            wipedCount={lastWipedKb ? lastWipedKb.length : 0}
+            handleUndoWipeKB={handleUndoWipeKB}
           />
         )}
 

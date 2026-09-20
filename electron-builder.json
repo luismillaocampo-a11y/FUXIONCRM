@@ -1,0 +1,50 @@
+{
+  "appId": "com.lzmilla.asistentevirtual",
+  "productName": "ASISTENTE VIRTUAL",
+  "copyright": "Copyright © 2026 Creado por Lz MiLLa",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "**/*",
+    "!ADMIN_ONLY_GENERATOR/**",
+    "!db.sqlite*",
+    "!dev.log",
+    "!*.log",
+    "!*.md",
+    "!tsconfig.tsbuildinfo",
+    "!tsconfig.json",
+    "!eslint.config.mjs",
+    "!postcss.config.mjs",
+    "!Dockerfile",
+    "!docker-compose.yml",
+    "!.dockerignore",
+    "!.gitignore",
+    "!.nvmrc",
+    "!electron-builder.json",
+    "!whatsapp_auth/**",
+    "!.env.local",
+    "!.env",
+    "!scratch/**",
+    "!.git/**",
+    "!.kilo/**",
+    "!scripts/**",
+    "!supabase/**",
+    "!license-server/**",
+    "!MANUAL_OFICIAL_NUTRAFLOW_CRM.html",
+    "!public/uploads/**"
+  ],
+  "asar": true,
+  "npmRebuild": false,
+  "win": {
+    "target": ["portable", "nsis"],
+    "icon": "public/favicon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "ASISTENTE VIRTUAL"
+  }
+}

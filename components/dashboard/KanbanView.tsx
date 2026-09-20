@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Search, Plus, Clock, UserCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { formatLeadPhone, calculateScore } from '@/lib/lead-utils';
 
 interface KanbanViewProps {
   leads: any[];
@@ -26,28 +27,7 @@ export default function KanbanView({
   setLeadsFilter
 }: KanbanViewProps) {
 
-  const calculateScore = (lead: any) => {
-    if (!lead) return 0;
-    let score = 0;
-    let tagsList: string[] = [];
-    try {
-      tagsList = typeof lead.tags === 'string' ? JSON.parse(lead.tags) : (lead.tags || []);
-    } catch (e) {
-      tagsList = lead.tags || [];
-    }
-
-    if (tagsList.includes('hot-lead')) score += 25;
-    if (tagsList.includes('interested') || tagsList.includes('interesado')) score += 10;
-    if (tagsList.includes('needs-verification') || tagsList.includes('ready-to-buy')) score += 15;
-
-    if (lead.status === 'Pending Verification') score += 20;
-    if (lead.status === 'Por Registrar en Web') score += 30;
-    if (lead.status === 'Converted') score += 50;
-
-    if (lead.unread_count > 0) score += 10;
-
-    return Math.min(score, 100);
-  };
+  const [syncMessage, setSyncMessage] = React.useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const getScoreColor = (score: number) => {
     if (score >= 60) return 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10';
@@ -71,8 +51,50 @@ export default function KanbanView({
               placeholder="Buscar por nombre..."
               value={leadsSearch}
               onChange={(e) => setLeadsSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-650 focus:outline-none focus:border-indigo-500/50"
+              className="w-full pl-9 pr-4 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50"
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/google-sheets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'delta' })
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    const detail = [
+                      typeof data.created === 'number' ? `${data.created} nuevos` : null,
+                      typeof data.updated === 'number' ? `${data.updated} actualizados` : null,
+                    ].filter(Boolean).join(' · ');
+                    setSyncMessage({ type: 'success', text: (data.message || '¡Sincronización exitosa con Google Sheets!') + (detail ? ` (${detail})` : '') });
+                  } else {
+                    setSyncMessage({ type: 'error', text: data.error || 'Configura la URL de Google Sheets en Configuración > Sistema.' });
+                  }
+                } catch (err: any) {
+                  setSyncMessage({ type: 'error', text: 'Error al conectar con Google Sheets: ' + (err.message || 'Error de red') });
+                }
+                setTimeout(() => setSyncMessage(null), 5000);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-bold text-xs transition flex items-center gap-1.5 shadow-md shrink-0"
+              title="Guardar y Sincronizar Contactos y Pedidos con Google Sheets"
+            >
+              <span>📊</span>
+              <span>Guardar en Google Sheets</span>
+            </button>
+
+            {syncMessage && (
+              <span className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium ${
+                syncMessage.type === 'success' 
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                  : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+              }`}>
+                {syncMessage.text}
+              </span>
+            )}
           </div>
           <div className="flex gap-1.5">
             {['Todos', 'Nuevo', 'Interactuando', 'Verificación Pendiente', 'Por Registrar en Web', 'Venta Confirmada'].map((filter) => (
@@ -99,7 +121,8 @@ export default function KanbanView({
           { title: 'Calificado / Interactuando', statusDb: 'Engaged', color: 'border-purple-500/30 bg-purple-500/[0.01]' },
           { title: 'Negociación / Pago', statusDb: 'Pending Verification', color: 'border-amber-500/30 bg-amber-500/[0.01]' },
           { title: 'Por Registrar en Web', statusDb: 'Por Registrar en Web', color: 'border-orange-500/30 bg-orange-500/[0.01]' },
-          { title: 'Venta Cerrada 🎉', statusDb: 'Converted', color: 'border-emerald-500/30 bg-emerald-500/[0.01]' }
+          { title: 'Venta Cerrada 🎉', statusDb: 'Converted', color: 'border-emerald-500/30 bg-emerald-500/[0.01]' },
+          { title: 'Archivados', statusDb: 'Archived', color: 'border-slate-500/30 bg-slate-500/[0.01]' }
         ].map((column) => {
           const columnLeads = filteredLeads.filter(l => l.status === column.statusDb);
           return (
@@ -141,7 +164,7 @@ export default function KanbanView({
                         )}
                       </div>
 
-                      <p className="text-[10px] text-slate-500 font-mono">+{lead.phone.replace(/\D/g, '')}</p>
+                      <p className="text-[10px] text-slate-500 font-mono">{formatLeadPhone(lead)}</p>
 
                       <div className="flex items-center justify-between border-t border-slate-800/60 pt-2 text-[10px]">
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded border font-bold ${getScoreColor(score)}`}>

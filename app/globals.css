@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-plus-jakarta), var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-plus-jakarta), var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  letter-spacing: -0.011em;
+}
+
 :root {
   --background: #090b11;
   --foreground: #f4f4f5;
@@ -7,48 +22,108 @@
   --card-border: #1f293d;
   --primary: #10b981; /* Default Emerald */
   --primary-hover: #059669;
-  --secondary: #0ea5e9; /* Tech Cyan */
-  --secondary-hover: #0284c7;
-  --accent: #8b5cf6; /* Automation Purple */
+  --secondary: #10b981;
+  --secondary-hover: #059669;
+  --accent: #10b981;
   --muted: #6b7280;
   --muted-light: #374151;
   --border: #1e293b;
   --input: #0f172a;
+  --font-scale: 1;
 }
 
-/* Violet Theme */
-.theme-violet {
-  --primary: #8b5cf6;
-  --primary-hover: #7c3aed;
-  --accent: #10b981;
+/* Escalado Tipográfico Profesional con Compensación de Espacios */
+html.font-size-compact {
+  font-size: 14px;
+}
+html.font-size-medium {
+  font-size: 15.5px;
+}
+html.font-size-large {
+  font-size: 17px;
 }
 
-/* Emerald Theme */
+html.font-size-medium .p-4 { padding: 1.15rem; }
+html.font-size-medium .p-6 { padding: 1.65rem; }
+html.font-size-medium .gap-2 { gap: 0.6rem; }
+html.font-size-medium .gap-3 { gap: 0.85rem; }
+
+html.font-size-large .p-4 { padding: 1.3rem; }
+html.font-size-large .p-6 { padding: 1.85rem; }
+html.font-size-large .gap-2 { gap: 0.75rem; }
+html.font-size-large .gap-3 { gap: 1rem; }
+html.font-size-large .leading-relaxed { line-height: 1.7; }
+
+/* 1. Estilo Actual Oficial: Esmeralda Fuxion Clásico */
 .theme-emerald {
   --primary: #10b981;
   --primary-hover: #059669;
-  --accent: #8b5cf6;
+  --accent: #10b981;
+  --glass-bg: #090b11;
+  --glass-border: rgba(16, 185, 129, 0.3);
 }
 
-/* Cobalt Theme */
-.theme-cobalt {
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
-  --accent: #8b5cf6;
+/* 2. Nuevo Estilo: Neón Glass Transparente (Cyber Glow) */
+.theme-neon-glass {
+  --primary: #00d2ff;
+  --primary-hover: #38bdf8;
+  --accent: #00d2ff;
+  --neon-glow: 0 0 16px rgba(0, 210, 255, 0.6), 0 0 32px rgba(0, 210, 255, 0.2);
+  --glass-bg: rgba(5, 8, 17, 0.55);
+  --glass-border: rgba(56, 189, 248, 0.5);
 }
 
-/* Amber Theme */
-.theme-amber {
-  --primary: #f59e0b;
-  --primary-hover: #d97706;
-  --accent: #8b5cf6;
+/* Estilo Neón Glass: Efecto translúcido y resplandor cyber */
+.theme-neon-glass aside {
+  background-color: rgba(7, 10, 19, 0.75) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  border-right-color: rgba(56, 189, 248, 0.2) !important;
 }
 
-/* Rose Theme */
-.theme-rose {
-  --primary: #f43f5e;
-  --primary-hover: #e11d48;
-  --accent: #8b5cf6;
+.theme-neon-glass .bg-\[\#111b21\] {
+  background-color: rgba(7, 11, 22, 0.6) !important;
+  backdrop-filter: blur(16px);
+}
+
+.theme-neon-glass .bg-\[\#202c33\] {
+  background-color: rgba(10, 16, 30, 0.75) !important;
+  backdrop-filter: blur(16px);
+}
+
+.theme-neon-glass .border-\[\#222d34\],
+.theme-neon-glass .border-slate-800 {
+  border-color: rgba(56, 189, 248, 0.22) !important;
+}
+
+.theme-neon-glass nav a.bg-emerald-500\/10 {
+  background-color: rgba(0, 210, 255, 0.12) !important;
+  border-color: rgba(0, 210, 255, 0.55) !important;
+  color: #38bdf8 !important;
+  box-shadow: 0 0 16px rgba(0, 210, 255, 0.25) !important;
+}
+
+/* Unificación visual: Todas las columnas adoptan el estilo de fondo de la Columna 1 (#0c0f1d) */
+body:not(.light) {
+  background-color: #0c0f1d !important;
+}
+
+body:not(.light) main,
+body:not(.light) aside,
+body:not(.light) .bg-\[\#07090e\],
+body:not(.light) .bg-\[\#090b11\],
+body:not(.light) .bg-\[\#0a0c13\],
+body:not(.light) .bg-\[\#0c0e17\],
+body:not(.light) .bg-\[\#0b141a\],
+body:not(.light) .bg-\[\#111b21\],
+body:not(.light) .bg-\[\#202c33\] {
+  background-color: #0c0f1d !important;
+}
+
+body:not(.light) .border-\[\#1e2330\],
+body:not(.light) .border-\[\#222d34\],
+body:not(.light) .border-\[\#2a3040\],
+body:not(.light) .border-\[\#2a3942\] {
+  border-color: #1e293b !important;
 }
 
 /* Light Mode Theme */
@@ -123,7 +198,7 @@
 .light .border-\[\#2a3040\],
 .light .border-slate-800,
 .light .border-slate-800\/80,
-.light .border-slate-850,
+.light .border-slate-800,
 .light .border-b,
 .light .border-r,
 .light .border-dashed {
@@ -342,6 +417,9 @@
 .hover\:bg-emerald-500\/25:hover {
   background-color: color-mix(in srgb, var(--primary) 25%, transparent) !important;
 }
+.border-emerald-400, .border-emerald-500, .border-emerald-600 {
+  border-color: var(--primary) !important;
+}
 .border-emerald-500\/10, .border-emerald-500\/15, .border-emerald-500\/20, .border-emerald-500\/25, .border-emerald-500\/30 {
   border-color: color-mix(in srgb, var(--primary) 20%, transparent) !important;
 }
@@ -357,6 +435,20 @@
 .shadow-emerald-500\/20 {
   box-shadow: 0 4px 20px color-mix(in srgb, var(--primary) 20%, transparent) !important;
 }
+
+/* Redirigir clases violeta y magenta residuales al color del tema activo */
+.text-violet-300, .text-violet-400, .text-violet-500, .text-violet-600 {
+  color: var(--primary) !important;
+}
+.bg-violet-500, .bg-violet-600 {
+  background-color: var(--primary) !important;
+}
+.bg-violet-500\/10, .bg-violet-500\/15, .bg-violet-500\/20 {
+  background-color: color-mix(in srgb, var(--primary) 15%, transparent) !important;
+}
+.border-violet-500, .border-violet-500\/20, .border-violet-500\/30, .border-violet-500\/40 {
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent) !important;
+}
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--primary) !important;
 }
@@ -366,7 +458,6 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   overflow-x: hidden;
 }
 

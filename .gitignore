@@ -29,9 +29,41 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+dev.log
+*.log
 
-# env files (can opt-in for committing if needed)
+# runtime local (datos del operador, no distribuir ni versionar)
+public/uploads/*
+!public/uploads/.gitkeep
+scratch/
+scratch_leads_backup.json
+*.backup.json
+
+# IDE & Editor caches
+.kilo/
+.vscode/
+.idea/
+
+# Database files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+/db.sqlite
+/db.sqlite-shm
+/db.sqlite-wal
+
+# WhatsApp session local credentials
+/whatsapp_auth/
+whatsapp_auth/
+
+# License server local state
+license-server/installations.json
+/ADMIN_ONLY_GENERATOR
+
+# env files
 .env*
+!.env.example
+!.env.cloudrun.example
 
 # vercel
 .vercel
@@ -40,11 +72,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
-.env*
-/whatsapp_auth
-/db.sqlite
-/db.sqlite-shm
-/db.sqlite-wal
-/ADMIN_ONLY_GENERATOR
+# build / dist outputs
+/dist
 

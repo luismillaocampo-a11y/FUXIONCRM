@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { sanitizeAiReply, stripInternalTagsForSending } from '@/lib/gemini';
 
 interface SendSocialMessageParams {
   recipientId: string;
@@ -12,6 +13,11 @@ interface SendSocialMessageParams {
  */
 export async function sendSocialMessage({ recipientId, messageText, channel }: SendSocialMessageParams): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
+    // Barrera anti-fuga también en Meta: nunca enviar <think>/prompt/tags internos
+    const safeText = stripInternalTagsForSending(sanitizeAiReply(messageText));
+    if (!safeText || safeText === '[UNKNOWN]') {
+      return { success: false, error: 'Respuesta bloqueada por sanitización' };
+    }
     const pageAccessToken = await db.getSystemSetting(`${channel}_access_token`) || process.env.META_PAGE_ACCESS_TOKEN || '';
     
     if (!pageAccessToken) {
@@ -28,7 +34,7 @@ export async function sendSocialMessage({ recipientId, messageText, channel }: S
 
     const payload = {
       recipient: { id: cleanRecipientId },
-      message: { text: messageText }
+      message: { text: safeText }
     };
 
     const response = await fetch(url, {

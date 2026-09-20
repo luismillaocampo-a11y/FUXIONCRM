@@ -5,14 +5,14 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const companyName = await db.getSystemSetting('client_company_name') || 'Fuxion Flow';
+    const companyName = await db.getSystemSetting('client_company_name') || 'Asistente Virtual';
     const logoUrl = await db.getSystemSetting('client_logo_url') || '';
     const lockedSetting = await db.getSystemSetting('company_name_locked');
     const isLocked = lockedSetting === null || lockedSetting === 'true' || lockedSetting === '1';
-    const vendorCredit = 'Desarrollado por L. Milla'; // Permanente e inamovible
+    const vendorCredit = 'Creado por Lz MiLLa'; // Permanente e inamovible
 
     return NextResponse.json({
-      companyName,
+      companyName: companyName === 'Fuxion Flow' ? 'Asistente Virtual' : companyName,
       logoUrl,
       vendorCredit,
       companyNameLocked: isLocked
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 
     // Solo actualizar el Nombre de la Empresa si NO está bloqueado por la licencia
     if (!isLocked && companyName !== undefined && companyName !== null) {
-      await db.setSystemSetting('client_company_name', String(companyName).trim() || 'Fuxion Flow');
+      await db.setSystemSetting('client_company_name', String(companyName).trim() || 'Asistente Virtual');
     }
 
     if (logoUrl !== undefined && logoUrl !== null) {
@@ -40,15 +40,16 @@ export async function POST(request: Request) {
     }
 
     // Asegurar firma inamovible
-    await db.setSystemSetting('vendor_brand_credit', 'Desarrollado por L. Milla');
+    await db.setSystemSetting('vendor_brand_credit', 'Creado por Lz MiLLa');
 
-    const currentCompanyName = await db.getSystemSetting('client_company_name') || 'Fuxion Flow';
+    const rawName = await db.getSystemSetting('client_company_name');
+    const currentCompanyName = (!rawName || rawName === 'Fuxion Flow') ? 'Asistente Virtual' : rawName;
 
     return NextResponse.json({
       success: true,
       companyName: currentCompanyName,
       logoUrl: logoUrl || '',
-      vendorCredit: 'Desarrollado por L. Milla',
+      vendorCredit: 'Creado por Lz MiLLa',
       companyNameLocked: isLocked
     });
   } catch (error: any) {

@@ -1,42 +1,20 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp-service';
+import { isCronAuthorized, cronUnauthorized } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
 
-const CRON_API_KEY = process.env.CRON_API_KEY || 'default-secret-key';
-
 async function sendWhatsAppMessage(phone: string, text: string) {
-  const url = process.env.EVOLUTION_API_URL;
-  const apiKey = process.env.EVOLUTION_API_KEY;
-  const instance = process.env.EVOLUTION_API_INSTANCE;
-
-  if (url && apiKey && instance) {
-    const cleanPhone = phone.replace(/\D/g, '');
-    const endpoint = `${url.replace(/\/$/, '')}/message/sendText/${instance}`;
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
-        body: JSON.stringify({ number: cleanPhone, text })
-      });
-      if (response.ok) return;
-    } catch (err) {
-      console.error('[cron/reminders] Evolution API failed, falling back to Baileys:', err);
-    }
-  }
+  // Modo local: Baileys directo (código Evolution retirado)
   await whatsappService.sendMessageToPhone(phone, text);
 }
 
 async function handleCron(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const authHeader = request.headers.get('Authorization');
-    const token = searchParams.get('api_key') || (authHeader ? authHeader.replace('Bearer ', '') : null);
-
-    if (!token || token !== CRON_API_KEY) {
+    if (!isCronAuthorized(request)) {
       console.warn('[Cron/Reminders] Unauthorized access attempt blocked.');
-      return NextResponse.json({ error: 'Unauthorized: Invalid or missing API Key' }, { status: 401 });
+      return cronUnauthorized();
     }
 
     console.log('[Cron/Reminders] Running pending reminders check...');

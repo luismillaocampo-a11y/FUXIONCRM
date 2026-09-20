@@ -1,21 +1,28 @@
 {
   "name": "app-scaffold",
-  "version": "0.1.0",
+  "version": "0.4.2",
   "private": true,
+  "main": "electron-main.js",
   "scripts": {
-    "dev": "next dev",
+    "dev": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" next dev",
     "build": "next build",
     "start": "next start",
+    "electron": "electron .",
+    "electron:pack": "npm run build && cross-env NODE_OPTIONS=--experimental-require-module electron-builder --dir",
+    "electron:dist": "npm run build && cross-env NODE_OPTIONS=--experimental-require-module electron-builder",
     "lint": "eslint",
     "check-env": "node scripts/check-env.js",
-    "monitor-evolution": "node scripts/monitor-evolution-api.js"
+    "monitor-evolution": "node scripts/monitor-evolution-api.js",
+    "deploy:cloudrun": "gcloud run deploy nutraflow-crm --source . --region us-central1 --allow-unauthenticated --min-instances=1 --max-instances=2 --memory=1Gi --cpu=1 --no-cpu-throttling --session-affinity",
+    "deploy:hosting": "firebase deploy --only hosting"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.108.2",
-    "@whiskeysockets/baileys": "^7.0.0-rc13",
+    "@whiskeysockets/baileys": "^6.7.24",
     "@xyflow/react": "^12.11.0",
     "better-sqlite3": "^12.11.1",
+    "googleapis": "^178.1.1",
     "groq-sdk": "^1.3.0",
     "jimp": "^1.6.1",
     "lucide-react": "^1.21.0",
@@ -28,6 +35,7 @@
     "sharp": "^0.35.2"
   },
   "devDependencies": {
+    "@noble/hashes": "^1.4.0",
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
@@ -35,9 +43,76 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^10.1.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.asistentevirtual.crm",
+    "productName": "Asistente Virtual",
+    "copyright": "Copyright © 2026 Asistente Virtual - Creado por Lz MiLLa",
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!**/*.ts",
+      "!**/*.tsx",
+      "!.next/cache/**/*",
+      "!.next/dev/**/*",
+      "!ADMIN_ONLY_GENERATOR/**/*",
+      "!db.sqlite*",
+      "!dev.log",
+      "!*.log",
+      "!*.md",
+      "!tsconfig.tsbuildinfo",
+      "!next-env.d.ts",
+      "!tsconfig.json",
+      "!eslint.config.mjs",
+      "!postcss.config.mjs",
+      "!Dockerfile",
+      "!docker-compose.yml",
+      "!.dockerignore",
+      "!.gitignore",
+      "!.nvmrc",
+      "!electron-builder.json",
+      "!.env.local",
+      "!.env",
+      "!.kilo/**/*",
+      "!scratch/**/*",
+      "!scripts/**/*",
+      "!supabase/**/*",
+      "!license-server/**/*",
+      "!MANUAL_OFICIAL_NUTRAFLOW_CRM.html",
+      "!license-server/installations.json",
+      "!public/uploads/**/*",
+      "!flows_ui_nodes_redesign_*.jpg",
+      "!whatsapp_interaction_modes_*.jpg",
+      "!installer_splash.png"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "differentialPackage": false,
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Asistente Virtual",
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico",
+      "installerSidebar": "public/installerSidebar.bmp",
+      "uninstallerSidebar": "public/installerSidebar.bmp",
+      "installerHeader": "public/installerHeader.bmp"
+    }
   }
 }

@@ -1,37 +1,35 @@
 import { NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { queryKnowledgeBase } from '@/lib/gemini';
+import { queryKnowledgeBase, logRecommendedProduct, snapshotOrderForLead, sanitizeAiReply, stripInternalTagsForSending } from '@/lib/gemini';
 import { alertKnowledgeGap, alertPaymentVerification, alertRegistration } from '@/lib/notifications';
 import { whatsappService } from '@/lib/whatsapp-service';
 import { db } from '@/lib/db';
 import { sendWhatsAppMessageDynamic } from '@/lib/whatsapp-sender';
+import { getAiGloballyEnabled } from '@/lib/ai-settings';
+import {
+  timingSafeEqual,
+  getWebhookVerifyToken,
+  verifyMetaSignature,
+} from '@/lib/webhook-auth';
+import { getPhoneFromWhatsappId } from '@/lib/lead-utils';
 
 export const dynamic = 'force-dynamic';
 
-// Initialize Supabase Client with Service Key to bypass RLS policies
-let cachedSupabase: SupabaseClient | null = null;
+async function getVerifyToken(): Promise<string> {
+  return getWebhookVerifyToken('whatsapp_verify_token', 'WHATSAPP_VERIFY_TOKEN');
+}
 
-function getSupabaseClient() {
-  if (!cachedSupabase) {
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.warn('[webhook/whatsapp] Warning: Supabase URL or Service Key is missing. Webhook database operations might fail.');
-    }
-    // Explicitly configure connection to accept and send UTF-8 for utf8mb4 emoji support
-    cachedSupabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        persistSession: false
-      },
-      global: {
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Accept-Charset': 'utf-8'
-        }
-      }
-    });
+async function getWebhookToken(): Promise<string> {
+  try {
+    const fromDb = await db.getSystemSetting('whatsapp_webhook_token');
+    if (fromDb && fromDb.trim()) return fromDb.trim();
+  } catch {
+    /* ignore */
   }
-  return cachedSupabase;
+  return (process.env.EVOLUTION_WEBHOOK_TOKEN || process.env.WHATSAPP_WEBHOOK_TOKEN || '').trim();
+}
+
+async function verifySignature(request: Request, rawBody: string): Promise<boolean> {
+  return verifyMetaSignature(request, rawBody, 'WHATSAPP_APP_SECRET');
 }
 
 /**
@@ -45,8 +43,12 @@ export async function GET(request: Request) {
   const challenge = searchParams.get('hub.challenge');
 
   if (mode === 'subscribe' && token) {
-    const verifyToken = await db.getSystemSetting('whatsapp_verify_token') || 'fuxion_verify_token';
-    if (token === verifyToken) {
+    const verifyToken = await getVerifyToken();
+    if (!verifyToken) {
+      console.error('[webhook/whatsapp] Verify token no configurado. Define WHATSAPP_VERIFY_TOKEN.');
+      return new Response('Webhook no configurado', { status: 500 });
+    }
+    if (timingSafeEqual(token, verifyToken)) {
       console.log('[webhook/whatsapp] Meta Webhook verified successfully!');
       return new Response(challenge, { status: 200 });
     } else {
@@ -58,22 +60,49 @@ export async function GET(request: Request) {
 }
 
 /**
- * Extracts phone digits from a WhatsApp ID.
+ * Extrae texto del mensaje (getPhoneFromWhatsappId vive en @/lib/lead-utils).
  */
-function getPhoneFromWhatsappId(id: string): string | null {
-  if (!id || typeof id !== 'string') return null;
-  const raw = id.split('@')[0] || '';
-  let digits = raw.replace(/\D/g, '');
-  if (digits.length === 9 && digits.startsWith('9')) {
-    digits = '51' + digits;
+
+async function fetchMediaBase64FromEvolution(messageObj: any, messageKey: any): Promise<string | null> {
+  try {
+    const url = await db.getSystemSetting('whatsapp_api_url') || process.env.EVOLUTION_API_URL || '';
+    const apiKey = await db.getSystemSetting('whatsapp_api_key') || process.env.EVOLUTION_API_KEY || '';
+    const instance = await db.getSystemSetting('whatsapp_instance') || process.env.EVOLUTION_API_INSTANCE || '';
+
+    if (!url || !apiKey || !instance || !messageKey) return null;
+
+    const endpoint = `${url.replace(/\/$/, '')}/message/getBase64FromMediaMessage/${instance}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': apiKey
+      },
+      body: JSON.stringify({
+        message: {
+          key: messageKey,
+          message: messageObj
+        },
+        convertToMp4: false
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data?.base64) {
+        return data.base64.startsWith('data:') ? data.base64 : `data:image/jpeg;base64,${data.base64}`;
+      }
+    }
+  } catch (e) {
+    console.warn('[webhook/whatsapp] Error consultando Base64 multimedia a Evolution:', e);
   }
-  return digits.length > 0 ? digits : null;
+  return null;
 }
 
 /**
  * Extracts the message text from different Evolution API / Baileys message payload structures.
  */
-function extractMessageText(message: any): string | null {
+async function extractMessageText(message: any, key?: any): Promise<string | null> {
   if (!message || typeof message !== 'object') return null;
   if (typeof message === 'string') return message;
 
@@ -97,11 +126,21 @@ function extractMessageText(message: any): string | null {
       if (type === 'conversation') return payload;
       if (type === 'extendedTextMessage') return payload?.text || payload?.contextInfo?.quotedMessage?.conversation || null;
       if (type === 'imageMessage' || type === 'videoMessage' || type === 'documentMessage' || type === 'audioMessage') {
-        if (payload?.caption) return payload.caption;
-        if (type === 'imageMessage') return '[Foto]';
-        if (type === 'documentMessage') return '[Documento]';
-        if (type === 'videoMessage') return '[Video]';
-        if (type === 'audioMessage') return '[Audio]';
+        let mediaUrl = payload?.url || payload?.directPath || payload?.base64 || payload?.mediaUrl || payload?.jpegThumbnail || payload?.thumbnailUrl || message?.mediaUrl || message?.base64 || '';
+        
+        if (!mediaUrl && key) {
+          mediaUrl = await fetchMediaBase64FromEvolution(message, key) || '';
+        }
+
+        if (mediaUrl && !mediaUrl.startsWith('http') && !mediaUrl.startsWith('data:') && !mediaUrl.startsWith('/')) {
+          const mime = type === 'audioMessage' ? 'audio/ogg' : 'image/jpeg';
+          mediaUrl = `data:${mime};base64,${mediaUrl}`;
+        }
+        const caption = payload?.caption ? `${payload.caption} ` : '';
+        if (type === 'imageMessage') return mediaUrl ? `[Foto] ${caption}${mediaUrl}`.trim() : `[Foto] ${caption}`.trim();
+        if (type === 'audioMessage') return mediaUrl ? `[Audio] ${mediaUrl}`.trim() : '[Audio]';
+        if (type === 'documentMessage') return mediaUrl ? `[Documento] ${caption}${mediaUrl}`.trim() : `[Documento] ${caption}`.trim();
+        if (type === 'videoMessage') return mediaUrl ? `[Video] ${caption}${mediaUrl}`.trim() : `[Video] ${caption}`.trim();
         return null;
       }
       if (type === 'stickerMessage') return payload?.url ? 'Sticker' : null;
@@ -140,7 +179,7 @@ function hasActiveIAConversation(messages: any[], activeFlows: any[]): boolean {
         }
       }
       if (node.type === 'buttons') {
-        const btnText = (node.data?.buttons || []).map((b: string, i: number) => `👉 *${i+1}.* ${b}`).join('\n');
+        const btnText = (node.data?.buttons || []).map((b: string, i: number) => `🔹 *${i+1}.* ${b}`).join('\n');
         if (lastBotText.includes(btnText)) {
           return false;
         }
@@ -167,6 +206,30 @@ async function sendWhatsAppMessage(phone: string, text: string) {
 export async function POST(request: Request) {
   console.log('[webhook/whatsapp] POST called');
 
+  // Auth del webhook: si hay token configurado (DB o env), se exige.
+  // Acepta header x-webhook-token / apikey / Authorization Bearer, o query ?token= / ?api_key=.
+  try {
+    const configuredToken = await getWebhookToken();
+    if (configuredToken) {
+      const url = new URL(request.url);
+      const provided =
+        (request.headers.get('x-webhook-token') || '').trim() ||
+        (request.headers.get('apikey') || '').trim() ||
+        (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim() ||
+        (url.searchParams.get('token') || '').trim() ||
+        (url.searchParams.get('api_key') || '').trim();
+      if (!timingSafeEqual(provided, configuredToken)) {
+        console.warn('[webhook/whatsapp] Unauthorized webhook attempt blocked.');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    } else {
+      console.warn('[webhook/whatsapp] Sin EVOLUTION_WEBHOOK_TOKEN configurado: webhook abierto. Configúralo para producción.');
+    }
+  } catch (e) {
+    console.error('[webhook/whatsapp] Error verificando auth del webhook:', e);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+
   // Si la sesión de Baileys local está activa en la base de datos, ignoramos el webhook externo.
   // Baileys procesa directamente los mensajes en tiempo real vía websocket en whatsapp-service.ts.
   try {
@@ -180,9 +243,18 @@ export async function POST(request: Request) {
     console.error('[webhook/whatsapp] Error al comprobar la sesión persistida:', e);
   }
 
-  const supabase = getSupabaseClient();
   try {
-    const body = await request.json();
+    const rawBody = await request.text();
+    if (!(await verifySignature(request, rawBody))) {
+      console.warn('[webhook/whatsapp] Firma Meta inválida.');
+      return NextResponse.json({ error: 'Unauthorized: firma inválida' }, { status: 401 });
+    }
+    let body: { event?: string; data?: any; key?: any; message?: any; sender?: string; pushName?: string };
+    try {
+      body = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      return NextResponse.json({ success: true, message: 'Ignored: invalid JSON' });
+    }
 
     // Evolution API payload uses 'event' and 'data' keys
     const event = body.event;
@@ -255,7 +327,7 @@ export async function POST(request: Request) {
 
     // Extract text directly. No cleaning, stripping, or sanitization is done to the message content,
     // ensuring complete support for special characters and complex utf8mb4 emojis (e.g. 🥺).
-    const rawMessageText = extractMessageText(messageObj);
+    const rawMessageText = await extractMessageText(messageObj, key);
     if (!rawMessageText) {
       console.log('[webhook/whatsapp] Ignored: No text extractable from message');
       return NextResponse.json({ success: true, message: 'Ignored: Empty message body' });
@@ -270,41 +342,26 @@ export async function POST(request: Request) {
     if (fromMe) {
       console.log(`[webhook/whatsapp] Logging outgoing message: direction = 'outgoing', sender = 'agent', source = 'mobile_device' for lead ${leadId}`);
 
-      // Check if this outgoing message is a duplicate of a recent bot message to avoid double-logging
+      // Check if this outgoing message is a duplicate of a recent bot or agent message to avoid double-logging
       const recentMessages = await db.getMessages(leadId);
-      const isBotDuplicate = recentMessages.slice(-3).some(
-        (m: any) => m.sender === 'bot' && m.message.trim() === messageText.trim()
-      );
-
-      if (isBotDuplicate) {
-        console.log(`[webhook/whatsapp] Outgoing message is a duplicate of a recent bot response. Skipping agent log.`);
-        return NextResponse.json({ success: true, message: 'Ignored: Bot loopback message' });
-      }
-
-      // Check if this outgoing message is a duplicate of a recent agent message sent within the last 5 seconds
       const nowMs = Date.now();
-      const isAgentDuplicate = recentMessages.some((m: any) => {
-        if (m.sender !== 'agent' || m.message !== messageText) {
-          return false;
-        }
+      const isDuplicateOutbound = recentMessages.some((m: any) => {
+        if (m.sender === 'customer') return false;
+        if (m.message.trim() !== messageText.trim()) return false;
 
         let isoStr = m.created_at;
         if (typeof isoStr === 'string') {
-          if (!isoStr.includes('T')) {
-            isoStr = isoStr.replace(' ', 'T');
-          }
-          if (!isoStr.endsWith('Z') && !isoStr.match(/[+-]\d{2}:?\d{2}$/)) {
-            isoStr += 'Z';
-          }
+          if (!isoStr.includes('T')) isoStr = isoStr.replace(' ', 'T');
+          if (!isoStr.endsWith('Z') && !isoStr.match(/[+-]\d{2}:?\d{2}$/)) isoStr += 'Z';
         }
         const msgTime = new Date(isoStr).getTime();
-        const diffSeconds = (nowMs - msgTime) / 1000;
-        return diffSeconds >= 0 && diffSeconds <= 5;
+        const diffSeconds = Math.abs(nowMs - msgTime) / 1000;
+        return diffSeconds <= 30;
       });
 
-      if (isAgentDuplicate) {
-        console.log(`[webhook/whatsapp] Outgoing message is a duplicate of a recent agent message sent within 5 seconds. Ignoring.`);
-        return NextResponse.json({ success: true, message: 'Ignored: Agent duplicate message within 5s' });
+      if (isDuplicateOutbound) {
+        console.log(`[webhook/whatsapp] Outgoing message is a duplicate of a recent bot/agent response within 30s. Skipping duplicate log.`);
+        return NextResponse.json({ success: true, message: 'Ignored: Duplicate outbound message within 30s' });
       }
 
       // Ensure lead exists
@@ -320,16 +377,7 @@ export async function POST(request: Request) {
 
       // Save outgoing message (uses WhatsApp key ID to avoid duplicates)
       const msgId = key.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-      if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
-        await supabase.from('chat_messages').upsert({
-          id: msgId,
-          lead_id: leadId,
-          sender: 'agent',
-          message: messageText
-        }, { onConflict: 'id' });
-      } else {
-        await db.addMessage(leadId, 'agent', messageText, msgId);
-      }
+      await db.addMessage(leadId, 'agent', messageText, msgId);
 
       return NextResponse.json({ success: true, message: 'Logged outgoing message' });
     }
@@ -361,16 +409,7 @@ export async function POST(request: Request) {
 
     // 2. Save incoming message to database
     const msgId = key.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
-      await supabase.from('chat_messages').upsert({
-        id: msgId,
-        lead_id: leadId,
-        sender: 'customer',
-        message: messageText
-      }, { onConflict: 'id' });
-    } else {
-      await db.addMessage(leadId, 'customer', messageText);
-    }
+    await db.addMessage(activeLead ? activeLead.id : leadId, 'customer', messageText, msgId);
 
     // Detectar si el cliente envió un comprobante (imagen/foto) después de recibir datos de pago
     const isPaymentAttachment = messageObj.imageMessage || messageText === '[Foto]';
@@ -390,6 +429,19 @@ export async function POST(request: Request) {
         const autoReply = '¡Muchas gracias por tu pago! Tu comprobante ha sido recibido. Un asesor humano lo verificará en unos minutos y procederemos con tu entrega. ¡Que tengas un excelente día! 😊';
         await db.addMessage(leadId, 'bot', autoReply);
         await sendWhatsAppMessage(activeLead.phone || phone, autoReply);
+
+        // Despachar notificación por correo SMTP al Administrador
+        try {
+          await alertPaymentVerification({
+            name: activeLead.name || cleanName,
+            phone: activeLead.phone || phone,
+            status: 'Pendiente de Verificación de Pago'
+          });
+          console.log(`[webhook/whatsapp] Alerta SMTP enviada exitosamente para comprobante de ${leadId}`);
+        } catch (err: any) {
+          console.error('[webhook/whatsapp] Error enviando alerta de pago SMTP:', err);
+        }
+
         return NextResponse.json({ success: true, reply: autoReply });
       }
     }
@@ -436,6 +488,43 @@ export async function POST(request: Request) {
       sender: m.sender,
       message: m.message
     }));
+
+    // 4.1 DETECCIÓN AUTOMÁTICA DE COMPROBANTES DE PAGO (Yape, Plin, Transferencia)
+    const isImageMessage = messageText === '[Foto]' || messageText === '[Documento]';
+    const isPaymentKeyword = /yape|plin|transferencia|comprobante|voucher|vouche|pago/i.test(messageText);
+
+    if (isImageMessage || (isPaymentKeyword && historyMessages.length > 1)) {
+      console.log(`[webhook/whatsapp] Comprobante de pago o foto detectada para cliente ${phone}. Enviando alerta SMTP.`);
+
+      // Actualizar estado del cliente
+      await db.updateLeadStatus(activeLead.id, 'Pending Verification');
+      // Pausar bot para no interrumpir al agente
+      await db.updateLeadBotActive(activeLead.id, false);
+      // Fase 2 pedidos: congelar producto x cantidad = total (no bloquea)
+      void snapshotOrderForLead(activeLead.id);
+
+      // Despachar correo electrónico de alerta SMTP al Administrador
+      try {
+        await alertPaymentVerification({
+          name: activeLead.name || cleanName,
+          phone: activeLead.phone || phone,
+          status: 'Pendiente de Verificación de Pago'
+        });
+      } catch (err: any) {
+        console.error('[webhook/whatsapp] Error enviando correo de alerta de pago:', err);
+      }
+
+      // Mensaje de respuesta al cliente por WhatsApp
+      const paymentReply = 'Hemos recibido tu comprobante de pago. Un asesor verificará la transacción y te confirmará en breve. ¡Muchas gracias por tu preferencia!';
+      await db.addMessage(leadId, 'bot', paymentReply);
+      await sendWhatsAppMessage(activeLead.phone || phone, paymentReply);
+
+      return NextResponse.json({
+        success: true,
+        reply: paymentReply,
+        paymentVerificationTriggered: true
+      });
+    }
 
     // 3.5. Flow Priority System Check
 
@@ -488,18 +577,19 @@ export async function POST(request: Request) {
     }
 
     // 3.1 Stop if AI is globally disabled by the operator
-    const aiGloballyEnabled = typeof globalThis.AI_GLOBALLY_ENABLED === 'undefined' ? true : globalThis.AI_GLOBALLY_ENABLED;
+    const aiGloballyEnabled = await getAiGloballyEnabled();
     if (!aiGloballyEnabled) {
       console.log(`[webhook/whatsapp] AI is globally disabled. Message logged for lead ${leadId}, no AI response sent.`);
       return NextResponse.json({ success: true, message: 'Message logged. AI globally disabled.' });
     }
 
-    // 5. Query Gemini AI with RAG Context
-    const reply = await queryKnowledgeBase(messageText, history);
+    // 5. Query Gemini AI with RAG Context (ya sanitizada dentro, doble barrera aquí)
+    const rawReply = await queryKnowledgeBase(messageText, history);
+    const reply = sanitizeAiReply(rawReply);
     console.log(`[webhook/whatsapp] AI Response: "${reply}"`);
 
     // 6. Handle UNKNOWN replies (Shadow Mode Activation)
-    if (reply.trim() === '[UNKNOWN]') {
+    if (reply.trim() === '[UNKNOWN]' || reply.trim().startsWith('[UNKNOWN] ')) {
       console.log(`[webhook/whatsapp] AI could not answer. Pausing bot and creating knowledge gap task.`);
 
       // Pause bot
@@ -550,8 +640,8 @@ export async function POST(request: Request) {
     const registroMatch = reply.match(/\[REGISTRO_DETECTADO:([^|\]]+)\|([^|\]]+)\|([^|\]]+)\|([^\]]+)\]/);
     if (registroMatch) {
       const [, regNombre, regDni, regCelular, regCorreo] = registroMatch;
-      // Strip the internal tag from the visible message
-      const confirmMsg = reply.replace(/\[REGISTRO_DETECTADO:[^\]]+\]/, '').trim();
+      // Strip the internal tag from the visible message (doble limpieza anti-fuga)
+      const confirmMsg = stripInternalTagsForSending(reply) || '¡Gracias! Hemos recibido tus datos y los estamos procesando. 😊';
       // The follow-up payment question is embedded or we add it separately
       const paymentFollowUp = 'Mientras procesamos tu registro y te llamamos, ¿cómo te gustaría dejar programado el pago de tu pedido de hoy? ¿Por Yape o transferencia?';
 
@@ -591,11 +681,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, reply: confirmMsg, registroDetectado: true });
     }
 
-    // 7. Save Bot Response to Logs
-    await db.addMessage(leadId, 'bot', reply);
+    // 7. Save Bot Response to Logs (solo texto visible, sin tags internos)
+    const visibleReply = stripInternalTagsForSending(reply);
+    await db.addMessage(leadId, 'bot', visibleReply);
+
+    // 7b. Fase 1 pedidos: registrar producto recomendado (no bloquea)
+    void logRecommendedProduct(leadId, visibleReply);
 
     // 8. Reply back via WhatsApp
-    await sendWhatsAppMessage(activeLead.phone || phone, reply);
+    await sendWhatsAppMessage(activeLead.phone || phone, visibleReply);
 
     // 9. Payment verification keywords trigger
     const paymentKeywords = ['yape', 'plin', 'transferencia', 'banco', 'pago', 'recibo', 'comprobante', 'voucher', 'pagar'];
@@ -603,6 +697,8 @@ export async function POST(request: Request) {
 
     if (isPaymentTrigger && activeLead.status !== 'Pending Verification') {
       await db.updateLeadStatus(activeLead.id, 'Pending Verification');
+      // Fase 2 pedidos: congelar producto x cantidad = total (no bloquea)
+      void snapshotOrderForLead(activeLead.id);
 
       let currentTags: string[] = [];
       try {
@@ -623,7 +719,7 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({ success: true, reply });
+    return NextResponse.json({ success: true, reply: visibleReply });
 
   } catch (error: any) {
     console.error('[webhook/whatsapp] Error handling webhook:', error);

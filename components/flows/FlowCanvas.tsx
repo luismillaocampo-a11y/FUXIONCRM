@@ -20,9 +20,10 @@ import '@xyflow/react/dist/style.css';
 import {
   Save, Play, Plus, Trash2, ArrowLeft, Settings,
   HelpCircle, Calendar, Bot, MessageSquare, AlertCircle,
-  ChevronRight, RefreshCw, Send, Check, X
+  ChevronRight, RefreshCw, Send, Check, X, Download, Upload
 } from 'lucide-react';
 import Link from 'next/link';
+import ConfirmModal from '@/components/ConfirmModal';
 
 // --- COMPONENTES DE NODOS PERSONALIZADOS ---
 
@@ -210,11 +211,12 @@ function CouponNode({ data }: any) {
 function UpdateStatusNode({ data }: any) {
   const translateStatus = (status: string) => {
     switch (status) {
-      case 'New': return 'Nuevo/Prospecto';
-      case 'Engaged': return 'Interactuando/info enviada';
+      case 'New': return 'Nuevo · sin atender';
+      case 'Engaged': return 'En conversación';
       case 'Pending Verification': return 'Esperando pago';
-      case 'Converted': return 'Venta Confirmada';
-      case 'Por Registrar en Web': return 'Registrar en Web/Por Despachar';
+      case 'Converted': return 'Venta cerrada';
+      case 'Por Registrar en Web': return 'Por registrar en web';
+      case 'Archived': return 'Archivado';
       default: return status;
     }
   };
@@ -283,6 +285,62 @@ const nodeTypes = {
   alertAgent: AlertAgentNode,
   aiAction: AiActionNode
 };
+
+// Handles de salida válidos por tipo de nodo (los botones son posicionales btn-{i}).
+function getValidSourceHandles(node: any): Set<string> {
+  if (!node) return new Set();
+  if (node.type === 'buttons') {
+    const n = Array.isArray(node.data?.buttons) ? node.data.buttons.length : 0;
+    return new Set(Array.from({ length: n }, (_, i) => `btn-${i}`));
+  }
+  if (node.type === 'logicJump') return new Set(['yes', 'no']);
+  return new Set(['output']);
+}
+
+/**
+ * Elimina conexiones huérfanas: nodos inexistentes, autoconexiones y
+ * sourceHandles que ya no existen (ej. se borró el botón btn-2 y los índices
+ * se recorrieron). Sin esto React Flow lanza error#008 en bucle al abrir.
+ * Devuelve { edges, removed }.
+ */
+function sanitizeFlowEdges(nodes: any[], edges: any[]): { edges: any[]; removed: number } {
+  if (!Array.isArray(edges)) return { edges: [], removed: 0 };
+  const byId = new Map((Array.isArray(nodes) ? nodes : []).map((n: any) => [n?.id, n]));
+  let removed = 0;
+  const clean = edges.filter((e: any) => {
+    if (!e || typeof e !== 'object') {
+      removed++;
+      return false;
+    }
+    const src = byId.get(e.source);
+    const tgt = byId.get(e.target);
+    if (!src || !tgt || e.source === e.target) {
+      removed++;
+      return false;
+    }
+    if (e.sourceHandle && !getValidSourceHandles(src).has(e.sourceHandle)) {
+      removed++;
+      return false;
+    }
+    if (e.targetHandle && e.targetHandle !== 'input') {
+      removed++;
+      return false;
+    }
+    return true;
+  });
+  // Sin duplicados exactos (misma salida hacia el mismo destino)
+  const seen = new Set<string>();
+  const deduped = clean.filter((e: any) => {
+    const k = `${e.source}|${e.sourceHandle || ''}|${e.target}|${e.targetHandle || ''}`;
+    if (seen.has(k)) {
+      removed++;
+      return false;
+    }
+    seen.add(k);
+    return true;
+  });
+  return { edges: deduped, removed };
+}
 
 // Componente auxiliar para evitar pérdida de cursor y scroll en áreas de texto controladas
 function ControlledTextArea({
@@ -362,6 +420,23 @@ function FlowBuilder() {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [simLeadTags, setSimLeadTags] = useState<string[]>(['interested']);
 
+  // Carga un grafo al editor limpiando conexiones huérfanas (error#008).
+  // Avisa para que el usuario guarde y persista la reparación.
+  const loadGraphIntoEditor = (nodesToLoad: any[], edgesToLoad: any[]) => {
+    const nodesArr = Array.isArray(nodesToLoad) ? nodesToLoad : [];
+    const { edges: cleanEdges, removed } = sanitizeFlowEdges(nodesArr, edgesToLoad);
+    setNodes(nodesArr);
+    setEdges(cleanEdges);
+    if (removed > 0) {
+      setFlowModal({
+        isOpen: true,
+        title: 'Conexiones reparadas',
+        message: `Se eliminaron ${removed} conexión(es) inválida(s) que apuntaban a nodos o botones que ya no existen. Presiona Guardar para persistir la reparación.`,
+        variant: 'warning'
+      });
+    }
+  };
+
   // Carga de los flujos
   const loadFlowsList = async (setEditorState = false) => {
     try {
@@ -374,8 +449,7 @@ function FlowBuilder() {
         if (setEditorState) {
           setActiveFlowId(data.activeFlow.id);
           setFlowName(data.activeFlow.name);
-          setNodes(data.activeFlow.nodes || []);
-          setEdges(data.activeFlow.edges || []);
+          loadGraphIntoEditor(data.activeFlow.nodes || [], data.activeFlow.edges || []);
         }
       } else {
         setSystemActiveFlowId('');
@@ -383,14 +457,25 @@ function FlowBuilder() {
           const f = data.flows[0];
           setActiveFlowId(f.id);
           setFlowName(f.name);
-          setNodes(f.nodes || []);
-          setEdges(f.edges || []);
+          loadGraphIntoEditor(f.nodes || [], f.edges || []);
         }
       }
     } catch (err) {
       console.error('Error al cargar flujos:', err);
     }
   };
+
+  const [flowModal, setFlowModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    variant?: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    variant: 'info'
+  });
 
   useEffect(() => {
     loadFlowsList(true);
@@ -408,11 +493,25 @@ function FlowBuilder() {
 
   // Conectar nodos en el canvas
   const onConnect = useCallback(
-    (params: any) => setEdges((eds) => addEdge({
-      ...params,
-      type: 'smoothstep',
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#475569' }
-    }, eds)),
+    (params: any) => {
+      // Sin autoconexiones ni duplicados exactos (evitan loops y error#008)
+      if (params.source === params.target) return;
+      setEdges((eds) => {
+        const dup = eds.some(
+          (e: any) =>
+            e.source === params.source &&
+            (e.sourceHandle || '') === (params.sourceHandle || '') &&
+            e.target === params.target &&
+            (e.targetHandle || '') === (params.targetHandle || '')
+        );
+        if (dup) return eds;
+        return addEdge({
+          ...params,
+          type: 'smoothstep',
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#475569' }
+        }, eds);
+      });
+    },
     [setEdges]
   );
 
@@ -577,20 +676,119 @@ function FlowBuilder() {
     }
   };
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Eliminar flujo activo
+  const handleDeleteFlow = async () => {
+    if (!activeFlowId) return;
+
+    if (activeFlowId === systemActiveFlowId) {
+      setDeleteError('No puedes eliminar el flujo que se encuentra activo en el sistema. Desactívalo primero.');
+      return;
+    }
+
+    setDeleteLoading(true);
+    setDeleteError(null);
+
+    try {
+      const res = await fetch(`/api/flows?id=${encodeURIComponent(activeFlowId)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setShowDeleteConfirm(false);
+        const updatedFlows = flows.filter(f => f.id !== activeFlowId);
+        setFlows(updatedFlows);
+
+        if (updatedFlows.length > 0) {
+          handleLoadFlow(updatedFlows[0]);
+        } else {
+          handleCreateNewFlow();
+        }
+      } else {
+        setDeleteError(data.error || 'No se pudo eliminar el flujo.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setDeleteError('Ocurrió un error al intentar eliminar el flujo.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Exportar flujo actual como archivo JSON
+  const handleExportFlow = () => {
+    const exportData = {
+      name: flowName,
+      nodes,
+      edges,
+      exportedAt: new Date().toISOString(),
+      version: '1.0'
+    };
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = flowName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    a.download = `flujo_${safeName || 'nutraflow'}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Importar flujo desde archivo JSON
+  const handleImportFlow = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        if (imported.nodes && imported.edges) {
+          const newId = `flow-${Date.now()}`;
+          const importedName = imported.name ? `${imported.name} (Importado)` : 'Flujo Importado';
+          setActiveFlowId(newId);
+          setFlowName(importedName);
+          loadGraphIntoEditor(imported.nodes || [], imported.edges || []);
+          setSelectedNode(null);
+        } else {
+          setFlowModal({
+            isOpen: true,
+            title: 'Estructura Inválida',
+            message: 'El archivo JSON no tiene la estructura de flujo válida (faltan nodos o conexiones).',
+            variant: 'warning'
+          });
+        }
+      } catch (err) {
+        setFlowModal({
+          isOpen: true,
+          title: 'Error de Lectura',
+          message: 'Error al leer el archivo JSON seleccionado.',
+          variant: 'danger'
+        });
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   // Cargar otro flujo seleccionado
   const handleLoadFlow = (flow: any) => {
     setActiveFlowId(flow.id);
     setFlowName(flow.name);
-    setNodes(flow.nodes || []);
-    setEdges(flow.edges || []);
+    loadGraphIntoEditor(flow.nodes || [], flow.edges || []);
     setSelectedNode(null);
   };
 
   // Crear flujo nuevo en blanco
   const handleCreateNewFlow = () => {
     const id = `flow-${Date.now()}`;
+    const newName = `Nuevo Flujo ${flows.length + 1}`;
     setActiveFlowId(id);
-    setFlowName('Flujo de Ventas FUXION CRM');
+    setFlowName(newName);
     setNodes([
       { id: '1', type: 'trigger', position: { x: 250, y: 50 }, data: { label: 'Disparador Iniciar', keyword: 'hola, empezar' } }
     ]);
@@ -737,11 +935,12 @@ function FlowBuilder() {
     else if (node.type === 'updateStatus') {
       const rawStatus = node.data.status || 'Engaged';
       const statusLabels: Record<string, string> = {
-        'New': 'Nuevo/Prospecto',
-        'Engaged': 'Interactuando/info enviada',
+        'New': 'Nuevo · sin atender',
+        'Engaged': 'En conversación',
         'Pending Verification': 'Esperando pago',
-        'Por Registrar en Web': 'Por Registrar en Web/Por Despachar',
-        'Converted': 'Venta Confirmada'
+        'Por Registrar en Web': 'Por registrar en web',
+        'Converted': 'Venta cerrada',
+        'Archived': 'Archivado'
       };
       const readable = statusLabels[rawStatus] || rawStatus;
 
@@ -1097,14 +1296,18 @@ function FlowBuilder() {
               <ArrowLeft className="h-3.5 w-3.5" />
               Atrás al Dashboard
             </Link>
-            <div className="flex flex-col">
-              <input
-                type="text"
-                value={flowName}
-                onChange={(e) => setFlowName(e.target.value)}
-                className="bg-transparent text-sm font-semibold text-white focus:outline-none border-b border-transparent focus:border-slate-700"
-              />
-              <span className="text-[10px] text-slate-500 uppercase font-semibold">Espacio de trabajo activo</span>
+            <div className="flex items-center gap-2 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-lg focus-within:border-emerald-500/50 transition">
+              <span className="text-slate-500 text-xs">✏️</span>
+              <div className="flex flex-col">
+                <span className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Título del Flujo</span>
+                <input
+                  type="text"
+                  value={flowName}
+                  onChange={(e) => setFlowName(e.target.value)}
+                  placeholder="Nombre de la configuración de flujo..."
+                  className="bg-transparent text-xs font-bold text-slate-100 focus:outline-none w-56 placeholder-slate-600"
+                />
+              </div>
             </div>
           </div>
 
@@ -1115,6 +1318,22 @@ function FlowBuilder() {
               </span>
             )}
             <button
+              onClick={handleExportFlow}
+              title="Exportar este flujo a un archivo para compartir"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+            >
+              <Download className="h-3.5 w-3.5 text-slate-400" />
+              Exportar Flujo
+            </button>
+            <label
+              title="Importar un archivo de flujo previamente guardado"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+            >
+              <Upload className="h-3.5 w-3.5 text-slate-400" />
+              Importar Flujo
+              <input type="file" accept=".json" onChange={handleImportFlow} className="hidden" />
+            </label>
+            <button
               onClick={() => startSimulation()}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/25 transition"
             >
@@ -1124,9 +1343,9 @@ function FlowBuilder() {
             <button
               onClick={() => handleSaveFlow()}
               disabled={saveLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-600 hover:bg-orange-500 text-white border border-slate-700 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-600 hover:bg-orange-500 text-white border border-slate-700 transition shadow-sm"
             >
-              <Save className="h-3.5 w-3.5 text-slate-400" />
+              <Save className="h-3.5 w-3.5 text-slate-300" />
               Guardar Cambios
             </button>
             <button
@@ -1139,6 +1358,18 @@ function FlowBuilder() {
             >
               <Save className="h-3.5 w-3.5" />
               {activeFlowId === systemActiveFlowId ? 'Flujo Activo' : 'Activar Flujo'}
+            </button>
+
+            {/* Botón Seguro de Eliminar Flujo */}
+            <button
+              onClick={() => {
+                setDeleteError(null);
+                setShowDeleteConfirm(true);
+              }}
+              title="Eliminar esta configuración de flujo"
+              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 transition ml-1"
+            >
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </header>
@@ -1189,7 +1420,7 @@ function FlowBuilder() {
 
             {/* Panel de Elementos a Agregar */}
             <Panel position="top-left" className="bg-[#0c0f1d]/90 border border-slate-800 p-4 rounded-xl shadow-2xl flex flex-col gap-2.5 z-10 w-52 backdrop-blur">
-              <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-850 pb-1.5">Agregar Elementos</h4>
+              <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-1.5">Agregar Elementos</h4>
 
               <button
                 onClick={() => addNodeToCanvas('trigger')}
@@ -1290,7 +1521,7 @@ function FlowBuilder() {
                 ))}
                 <button
                   onClick={handleCreateNewFlow}
-                  className="px-2 py-1 bg-slate-850 hover:bg-slate-800 rounded border border-dashed border-slate-700 text-slate-400 hover:text-slate-200 text-xs"
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-800 rounded border border-dashed border-slate-700 text-slate-400 hover:text-slate-200 text-xs"
                 >
                   + Nuevo
                 </button>
@@ -1376,8 +1607,28 @@ function FlowBuilder() {
                         />
                         <button
                           onClick={() => {
+                            const nodeId = selectedNode.id;
                             const newBtns = selectedNode.data.buttons.filter((_: any, i: number) => i !== index);
                             updateNodeData({ buttons: newBtns });
+                            // Limpiar la conexión del botón borrado y reindexar las
+                            // superiores (btn-3 pasa a btn-2, etc.) para no dejar huérfanas.
+                            setEdges((eds) => {
+                              const out: any[] = [];
+                              for (const e of eds) {
+                                if (e.source !== nodeId || !e.sourceHandle?.startsWith('btn-')) {
+                                  out.push(e);
+                                  continue;
+                                }
+                                const n = parseInt(e.sourceHandle.slice(4), 10);
+                                if (Number.isNaN(n)) {
+                                  out.push(e);
+                                  continue;
+                                }
+                                if (n === index) continue; // Conexión del botón eliminado
+                                out.push(n > index ? { ...e, sourceHandle: `btn-${n - 1}` } : e);
+                              }
+                              return out;
+                            });
                           }}
                           className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/5 rounded border border-transparent hover:border-red-500/10"
                         >
@@ -1391,7 +1642,7 @@ function FlowBuilder() {
                         const newBtns = [...(selectedNode.data.buttons || []), `Nueva Opción`];
                         updateNodeData({ buttons: newBtns });
                       }}
-                      className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-slate-800 hover:border-slate-750 hover:bg-slate-900/40 rounded-lg text-[10px] font-semibold text-slate-400 hover:text-slate-300 transition"
+                      className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-slate-800 hover:border-slate-700 hover:bg-slate-900/40 rounded-lg text-[10px] font-semibold text-slate-400 hover:text-slate-300 transition"
                     >
                       <Plus className="h-3 w-3" />
                       Agregar Opción de Botón
@@ -1518,11 +1769,12 @@ function FlowBuilder() {
                     onChange={(e) => updateNodeData({ status: e.target.value })}
                     className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-cyan-500/50"
                   >
-                    <option value="New">Nuevo/Prospecto</option>
-                    <option value="Engaged">Interactuando/info enviada</option>
+                    <option value="New">Nuevo · sin atender</option>
+                    <option value="Engaged">En conversación</option>
                     <option value="Pending Verification">Esperando pago</option>
-                    <option value="Por Registrar en Web">Por Registrar en Web/Por Despachar</option>
-                    <option value="Converted">Venta Confirmada</option>
+                    <option value="Por Registrar en Web">Por registrar en web</option>
+                    <option value="Converted">Venta cerrada</option>
+                    <option value="Archived">Archivado (fuera del embudo)</option>
                   </select>
                 </div>
               </div>
@@ -1571,7 +1823,7 @@ function FlowBuilder() {
           </div>
 
           {/* Botón de eliminación */}
-          <div className="p-4 border-t border-slate-850 bg-slate-950/20">
+          <div className="p-4 border-t border-slate-800 bg-slate-950/20">
             <button
               onClick={deleteSelectedNode}
               className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-lg bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 text-red-400 transition"
@@ -1661,7 +1913,7 @@ function FlowBuilder() {
                           <button
                             key={optIdx}
                             onClick={() => handleSimChoiceSelect(opt, optIdx)}
-                            className="w-full text-left px-3 py-2 bg-slate-950/80 hover:bg-emerald-500/10 text-slate-300 hover:text-emerald-400 border border-slate-850 hover:border-emerald-500/30 rounded-lg text-xs font-semibold transition flex justify-between items-center"
+                            className="w-full text-left px-3 py-2 bg-slate-950/80 hover:bg-emerald-500/10 text-slate-300 hover:text-emerald-400 border border-slate-800 hover:border-emerald-500/30 rounded-lg text-xs font-semibold transition flex justify-between items-center"
                           >
                             <span>{opt}</span>
                             <ChevronRight className="h-3 w-3 opacity-60" />
@@ -1697,7 +1949,7 @@ function FlowBuilder() {
               />
               <button
                 onClick={() => startSimulation()}
-                className="px-3 py-2 bg-slate-800 border border-slate-700 hover:bg-slate-750 text-slate-300 hover:text-white rounded-lg text-xs font-semibold transition"
+                className="px-3 py-2 bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-semibold transition"
                 title="Reiniciar Simulación"
               >
                 Reset
@@ -1718,6 +1970,80 @@ function FlowBuilder() {
           </div>
         </div>
       )}
+
+      {/* Modal Seguro de Confirmación para Eliminar Flujo */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0c0f1d] border border-red-500/30 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+              <div className="p-2 bg-red-500/10 rounded-xl border border-red-500/20 text-red-400">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-100">Eliminar Flujo de Automatización</h3>
+                <p className="text-xs text-slate-400">Confirma si deseas borrar esta configuración</p>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-300">
+              <p>
+                ¿Estás seguro de que deseas eliminar permanentemente el flujo:
+              </p>
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 font-bold text-white flex items-center justify-between">
+                <span>{flowName}</span>
+                <span className="text-[10px] text-slate-500 font-mono">ID: {activeFlowId}</span>
+              </div>
+              <p className="text-slate-400 italic">
+                ⚠️ Esta acción es irreversible y eliminará todos sus nodos y conexiones asociadas.
+              </p>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-xs flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteError(null);
+                }}
+                disabled={deleteLoading}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteFlow}
+                disabled={deleteLoading}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-red-950/50"
+              >
+                {deleteLoading ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Sí, Eliminar Flujo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Estilizado de Alertas */}
+      <ConfirmModal
+        isOpen={flowModal.isOpen}
+        title={flowModal.title}
+        message={flowModal.message}
+        confirmText="Aceptar"
+        cancelText="Cerrar"
+        variant={flowModal.variant || 'info'}
+        onConfirm={() => setFlowModal(prev => ({ ...prev, isOpen: false }))}
+        onCancel={() => setFlowModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

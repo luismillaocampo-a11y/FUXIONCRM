@@ -1,22 +1,19 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp-service';
+import { isCronAuthorized, cronUnauthorized } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
 
-// Obtain secure CRON_API_KEY from environment variables or fallback to a default secret
-const CRON_API_KEY = process.env.CRON_API_KEY || 'default-secret-key';
+// Tope anti-spam por ejecución: evita oleadas masivas si el cron se atasca
+const MAX_FOLLOWUPS_PER_RUN = 50;
 
 async function handleCron(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const authHeader = request.headers.get('Authorization');
-    const token = searchParams.get('api_key') || (authHeader ? authHeader.replace('Bearer ', '') : null);
-
-    // Secure authentication check
-    if (!token || token !== CRON_API_KEY) {
+    // Secure authentication check: sesión válida o CRON_API_KEY (sin fallback público)
+    if (!isCronAuthorized(request)) {
       console.warn('[Cron/Followup] Unauthorized access attempt blocked.');
-      return NextResponse.json({ error: 'Unauthorized: Invalid or missing API Key' }, { status: 401 });
+      return cronUnauthorized();
     }
 
     console.log('[Cron/Followup] Starting followup task execution...');
@@ -29,8 +26,16 @@ async function handleCron(request: Request) {
     const processedLeads: { id: string; phone: string; name: string }[] = [];
 
     for (const lead of allLeads) {
+      if (processedLeads.length >= MAX_FOLLOWUPS_PER_RUN) {
+        console.log(`[Followup] Tope de ${MAX_FOLLOWUPS_PER_RUN} alcanzado, resto queda para el próximo tick.`);
+        break;
+      }
+
       // Skip if lead is already converted
       if (lead.status === 'Converted') continue;
+
+      // No molestar leads en modo manual (bot pausado por el operador)
+      if (lead.bot_active === 0 || lead.bot_active === false) continue;
 
       // Robust parsing of updated_at column
       let isoStr = lead.updated_at;
@@ -45,6 +50,7 @@ async function handleCron(request: Request) {
         }
       }
       const updatedAtMs = new Date(isoStr).getTime();
+      if (Number.isNaN(updatedAtMs)) continue;
 
       // Check if lead was updated more than 24 hours ago
       if (now - updatedAtMs < twentyFourHours) {
@@ -52,7 +58,13 @@ async function handleCron(request: Request) {
       }
 
       // Retrieve chat history to verify last message sender
-      const messages = await db.getMessages(lead.id);
+      let messages: Array<{ sender: string }>;
+      try {
+        messages = await db.getMessages(lead.id);
+      } catch (msgErr) {
+        console.error(`[Followup] No se pudo leer mensajes de ${lead.id}, omitiendo.`);
+        continue;
+      }
       if (messages.length === 0) continue;
 
       const lastMsg = messages[messages.length - 1];
@@ -67,27 +79,32 @@ async function handleCron(request: Request) {
         if (isGenericName) {
           rescueMessage = 'Hola, vi que estuviste consultando sobre nuestros productos y me quedé con la duda de si te quedó alguna consulta pendiente. ¿Te gustaría ayuda para concretar tu pedido o necesitas más información?';
         } else {
-          rescueMessage = `Hola ${leadName}, vi que estuviste consultando sobre nuestros productos y me quedé con la duda de si te quedó alguna consulta pendiente. ¿Te gustaría ayuda para concretar tu pedido o necesitas más información?`;
+          rescueMessage = `Hola ${leadName.slice(0, 60)}, vi que estuviste consultando sobre nuestros productos y me quedé con la duda de si te quedó alguna consulta pendiente. ¿Te gustaría ayuda para concretar tu pedido o necesitas más información?`;
         }
         
         console.log(`[Followup] Enviando mensaje de rescate a ${lead.phone} para el lead ${lead.id}`);
         
-        // Send WhatsApp message using the service
-        await whatsappService.sendMessageToPhone(lead.phone, rescueMessage);
-        
-        // Log the follow-up message to the chat history
-        await db.addMessage(lead.id, 'bot', rescueMessage);
-        
-        // Update updated_at of the lead so we don't spam them in subsequent cron ticks
-        await db.upsertLead({
-          id: lead.id,
-          name: lead.name,
-          phone: lead.phone,
-          status: lead.status,
-          bot_active: lead.bot_active
-        });
+        try {
+          // Send WhatsApp message using the service
+          await whatsappService.sendMessageToPhone(lead.phone, rescueMessage);
+          
+          // Log the follow-up message to the chat history
+          await db.addMessage(lead.id, 'bot', rescueMessage);
+          
+          // Update updated_at of the lead so we don't spam them in subsequent cron ticks
+          await db.upsertLead({
+            id: lead.id,
+            name: lead.name,
+            phone: lead.phone,
+            status: lead.status,
+            bot_active: lead.bot_active
+          });
 
-        processedLeads.push({ id: lead.id, phone: lead.phone, name: lead.name });
+          processedLeads.push({ id: lead.id, phone: lead.phone, name: lead.name });
+        } catch (sendErr) {
+          // Un fallo no aborta el resto de la campaña
+          console.error(`[Followup] Falló envío a ${lead.id}, continúa con el siguiente:`, sendErr);
+        }
       }
     }
 

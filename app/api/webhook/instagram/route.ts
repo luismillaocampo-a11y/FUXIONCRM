@@ -1,9 +1,22 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { queryKnowledgeBase } from '@/lib/gemini';
+import { queryKnowledgeBase, sanitizeAiReply, stripInternalTagsForSending } from '@/lib/gemini';
 import { sendSocialMessage } from '@/lib/social-sender';
+import {
+  timingSafeEqual,
+  getWebhookVerifyToken,
+  verifyMetaSignature,
+} from '@/lib/webhook-auth';
 
 export const dynamic = 'force-dynamic';
+
+async function getVerifyToken(): Promise<string> {
+  return getWebhookVerifyToken('instagram_verify_token', 'INSTAGRAM_VERIFY_TOKEN');
+}
+
+async function verifySignature(request: Request, rawBody: string): Promise<boolean> {
+  return verifyMetaSignature(request, rawBody, 'INSTAGRAM_APP_SECRET', 'FACEBOOK_APP_SECRET');
+}
 
 /**
  * GET /api/webhook/instagram
@@ -16,8 +29,12 @@ export async function GET(request: Request) {
   const challenge = searchParams.get('hub.challenge');
 
   if (mode === 'subscribe' && token) {
-    const verifyToken = await db.getSystemSetting('instagram_verify_token') || 'nutraflow_instagram_token';
-    if (token === verifyToken) {
+    const verifyToken = await getVerifyToken();
+    if (!verifyToken) {
+      console.error('[webhook/instagram] Verify token no configurado. Define INSTAGRAM_VERIFY_TOKEN.');
+      return new Response('Webhook no configurado', { status: 500 });
+    }
+    if (timingSafeEqual(token, verifyToken)) {
       console.log('[webhook/instagram] Webhook de Instagram verificado con éxito!');
       return new Response(challenge, { status: 200 });
     } else {
@@ -32,8 +49,18 @@ export async function GET(request: Request) {
  * Procesamiento de DMs entrantes de Instagram
  */
 export async function POST(request: Request) {
+  let body: any;
   try {
-    const body = await request.json();
+    const rawBody = await request.text();
+    if (!(await verifySignature(request, rawBody))) {
+      console.warn('[webhook/instagram] Firma Meta inválida.');
+      return NextResponse.json({ error: 'Unauthorized: firma inválida' }, { status: 401 });
+    }
+    try {
+      body = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      return NextResponse.json({ success: true, message: 'Ignored: invalid JSON' });
+    }
 
     if (body.object === 'instagram' || body.object === 'page') {
       for (const entry of body.entry || []) {
@@ -55,7 +82,8 @@ export async function POST(request: Request) {
                 phone: leadId,
                 status: 'New',
                 tags: ['instagram', 'ig-dm'],
-                bot_active: true
+                bot_active: true,
+                channel: 'instagram'
               });
             }
 
@@ -67,15 +95,21 @@ export async function POST(request: Request) {
             const isBotActive = lead.bot_active && (aiSetting === null || aiSetting === 'true');
 
             if (isBotActive) {
-              const aiReply = await queryKnowledgeBase(text);
-              if (aiReply && aiReply.trim()) {
-                await sendSocialMessage({
-                  recipientId: senderId,
-                  messageText: aiReply,
-                  channel: 'instagram'
-                });
+              const rawReply = await queryKnowledgeBase(text);
+              const sanitized = sanitizeAiReply(rawReply);
+              if (sanitized.trim() === '[UNKNOWN]' || sanitized.trim().startsWith('[UNKNOWN] ')) {
+                await db.addGap(`gap-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, leadId, text, '');
+              } else {
+                const aiReply = stripInternalTagsForSending(sanitized);
+                if (aiReply) {
+                  await sendSocialMessage({
+                    recipientId: senderId,
+                    messageText: aiReply,
+                    channel: 'instagram'
+                  });
 
-                await db.addMessage(leadId, 'bot', aiReply, `msg_ig_ai_${Date.now()}`);
+                  await db.addMessage(leadId, 'bot', aiReply, `msg_ig_ai_${Date.now()}`);
+                }
               }
             }
           }

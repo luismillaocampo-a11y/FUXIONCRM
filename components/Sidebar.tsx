@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
+import ActivationModal from './ActivationModal';
 import {
   LayoutDashboard, GitFork, MessageSquare, Activity,
   Bot, BotOff, AlertTriangle, CheckCircle2, Loader2, Megaphone, Settings, LogOut, Share2
@@ -37,13 +38,22 @@ export default function Sidebar() {
     vendorCredit: 'Desarrollado por L. Milla'
   });
 
-  // Fetch global AI setting, manual leads count and branding
+  // --- License State ---
+  const [isLicenseValid, setIsLicenseValid] = useState<boolean>(true);
+  const [showActivationModal, setShowActivationModal] = useState<boolean>(false);
+
+  // --- WhatsApp Connection State ---
+  const [whatsappStatus, setWhatsappStatus] = useState<string>('disconnected');
+
+  // Fetch global AI setting, manual leads count, branding, license and WhatsApp status
   const fetchStatus = useCallback(async () => {
     try {
-      const [settingsRes, leadsRes, brandingRes] = await Promise.all([
+      const [settingsRes, leadsRes, brandingRes, licenseRes, waRes] = await Promise.all([
         fetch('/api/settings', { cache: 'no-store' }),
         fetch('/api/leads', { cache: 'no-store' }),
-        fetch('/api/settings/branding', { cache: 'no-store' })
+        fetch('/api/settings/branding', { cache: 'no-store' }),
+        fetch('/api/license/activate', { cache: 'no-store' }),
+        fetch('/api/whatsapp?statusOnly=true', { cache: 'no-store' })
       ]);
 
       if (settingsRes.ok) {
@@ -62,10 +72,28 @@ export default function Sidebar() {
       if (brandingRes.ok) {
         const brandingData = await brandingRes.json();
         setBranding({
-          companyName: brandingData.companyName || 'Fuxion Flow',
+          companyName: brandingData.companyName || 'Asistente Virtual',
           logoUrl: brandingData.logoUrl || '',
-          vendorCredit: 'Desarrollado por L. Milla'
+          vendorCredit: 'Creado por Lz MiLLa'
         });
+      }
+
+      if (licenseRes.ok) {
+        const licenseData = await licenseRes.json();
+        // Sin bypass por localStorage: el estado lo decide el servidor local.
+        // Se muestra el registro si está bloqueada o si aún no tiene empresa.
+        if (licenseData.isValid === false || !licenseData.companyName) {
+          setIsLicenseValid(false);
+          setShowActivationModal(true);
+        } else {
+          setIsLicenseValid(true);
+          setShowActivationModal(false);
+        }
+      }
+
+      if (waRes.ok) {
+        const waData = await waRes.json();
+        setWhatsappStatus(waData.status || 'disconnected');
       }
     } catch (err) {
       console.error('[Sidebar] Error fetching status:', err);
@@ -73,10 +101,16 @@ export default function Sidebar() {
   }, []);
 
   useEffect(() => {
+    if (pathname === '/login') return;
+    if (typeof window !== 'undefined') {
+      const savedFontSize = localStorage.getItem('crm_font_size') || 'compact';
+      document.documentElement.classList.remove('font-size-compact', 'font-size-medium', 'font-size-large');
+      document.documentElement.classList.add(`font-size-${savedFontSize}`);
+    }
     fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
+    const interval = setInterval(fetchStatus, 8000);
     return () => clearInterval(interval);
-  }, [fetchStatus]);
+  }, [fetchStatus, pathname]);
 
   // Toggle global AI on/off
   const handleToggleAI = async () => {
@@ -158,27 +192,25 @@ export default function Sidebar() {
     : // OFF: red/rose dimmed button
       'group flex items-center gap-2 w-full mt-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/25 hover:border-rose-400/50 shadow-[0_0_12px_rgba(239,68,68,0.05)] hover:shadow-[0_0_18px_rgba(239,68,68,0.12)]';
 
+  if (pathname === '/login') {
+    return null;
+  }
+
   return (
     <aside className="w-64 border-r border-slate-800 bg-[#0c0f1d] flex flex-col h-full shrink-0">
       {/* Cabecera de la Marca Personalizable */}
       <div className="h-16 flex items-center px-5 border-b border-slate-800 gap-3">
-        {branding.logoUrl ? (
-          <img 
-            src={branding.logoUrl} 
-            alt="Logo" 
-            className="w-9 h-9 rounded-xl object-contain bg-slate-900/80 p-1 border border-slate-800" 
-          />
-        ) : (
-          <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20 shrink-0">
-            <Activity className="h-5 w-5" />
-          </div>
-        )}
+        <img 
+          src={branding.logoUrl || '/logo-av.png'} 
+          alt="Logo AV" 
+          className="w-10 h-10 object-contain rounded-xl" 
+        />
         <div className="min-w-0 flex-1">
-          <h1 className="font-bold text-sm text-white tracking-tight truncate" title={branding.companyName}>
-            {branding.companyName}
+          <h1 className="font-bold text-sm text-white tracking-tight truncate" title={branding.companyName || 'Asistente Virtual'}>
+            {branding.companyName || 'Asistente Virtual'}
           </h1>
-          <p className="text-[10px] text-emerald-400 font-semibold tracking-wide uppercase truncate">
-            Desarrollado por L. Milla
+          <p className="text-[10px] text-slate-400 font-medium tracking-wide uppercase truncate">
+            Creado por Lz MiLLa
           </p>
         </div>
       </div>
@@ -210,8 +242,43 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Estado del Sistema + Toggle Global IA */}
-      <div className="p-4 border-t border-slate-800 bg-slate-950/20 space-y-1">
+      {/* Estado del Sistema + WhatsApp + Toggle Global IA */}
+      <div className="p-4 border-t border-slate-800 bg-slate-950/20 space-y-2">
+        {/* Tarjeta Destacada de Conexión de WhatsApp */}
+        <Link 
+          href="/whatsapp"
+          className={`block p-3 rounded-2xl border transition-all duration-300 group ${
+            whatsappStatus === 'connected' || whatsappStatus === 'open'
+              ? 'bg-emerald-950/20 hover:bg-emerald-950/40 border-emerald-500/30 hover:border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.08)]'
+              : 'bg-rose-950/30 hover:bg-rose-950/50 border-rose-500/40 hover:border-rose-500/60 shadow-[0_0_20px_rgba(244,63,94,0.12)]'
+          }`}
+          title="Ver Panel de Conexión de WhatsApp"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${
+                whatsappStatus === 'connected' || whatsappStatus === 'open'
+                  ? 'bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse'
+                  : 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'
+              }`} />
+              <span className={`text-xs font-bold leading-tight ${
+                whatsappStatus === 'connected' || whatsappStatus === 'open'
+                  ? 'text-emerald-300'
+                  : 'text-rose-300'
+              }`}>
+                {whatsappStatus === 'connected' || whatsappStatus === 'open' ? 'WhatsApp En Línea' : 'WhatsApp Desconectado'}
+              </span>
+            </div>
+            <MessageSquare size={13} className={whatsappStatus === 'connected' || whatsappStatus === 'open' ? 'text-emerald-400' : 'text-rose-400'} />
+          </div>
+          
+          <p className="text-[10px] text-slate-400 mt-1.5 leading-snug">
+            {whatsappStatus === 'connected' || whatsappStatus === 'open'
+              ? '✨ Sincronizado y recibiendo mensajes.'
+              : '⚠️ Toca aquí para vincular el QR y activar el bot.'}
+          </p>
+        </Link>
+
         {/* Indicador dinámico de estado */}
         <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-900/40 border border-slate-800/60">
           <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${current.dot} ${current.dotAnimation}`} />
@@ -227,50 +294,96 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* Botón toggle global IA */}
+        {/* Botón Apagado/Encendido General del Bot */}
         <button
           onClick={handleToggleAI}
           disabled={toggling || aiEnabled === null}
-          title={aiEnabled ? 'Haz clic para desactivar respuestas automáticas de IA' : 'Haz clic para activar respuestas automáticas de IA'}
-          className={toggleBtnClass}
-          aria-label={aiEnabled ? 'Desactivar IA global' : 'Activar IA global'}
+          title={aiEnabled ? 'Apagar Bot general (pausa todas las respuestas IA)' : 'Encender Bot general'}
+          aria-label={aiEnabled ? 'Apagar Bot general' : 'Encender Bot general'}
+          className={`${toggleBtnClass} disabled:opacity-50 disabled:cursor-not-allowed justify-center cursor-pointer`}
         >
-          {toggling ? (
+          {toggling || aiEnabled === null ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
           ) : aiEnabled ? (
-            <Bot className="h-3.5 w-3.5 flex-shrink-0 transition-transform group-hover:scale-110" />
+            <BotOff className="h-3.5 w-3.5 flex-shrink-0" />
           ) : (
-            <BotOff className="h-3.5 w-3.5 flex-shrink-0 transition-transform group-hover:scale-110" />
+            <Bot className="h-3.5 w-3.5 flex-shrink-0" />
           )}
-          <span className="flex-1 text-left leading-tight">
-            {aiEnabled === null
-              ? 'Cargando...'
-              : aiEnabled
-              ? 'IA Activa — Clic para pausar'
-              : 'IA Pausada — Clic para activar'}
+          <span className="flex-1 text-center leading-tight">
+            {toggling ? 'Cambiando...' : aiEnabled === null ? 'Cargando...' : aiEnabled ? 'Apagar Bot' : 'Encender Bot'}
           </span>
-          {/* Status pill */}
-          {aiEnabled !== null && (
-            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 transition-all ${
-              aiEnabled
-                ? 'bg-emerald-500/20 text-emerald-300'
-                : 'bg-rose-500/20 text-rose-400'
-            }`}>
-              {aiEnabled ? 'ON' : 'OFF'}
-            </span>
-          )}
         </button>
+
+        {/* Selector de Escala de Fuente Profesional */}
+        <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/60 border border-slate-800/80">
+          <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 pl-1">
+            <span className="text-xs">Aa</span> Tamaño:
+          </span>
+          <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('crm_font_size', 'compact');
+                  document.documentElement.classList.remove('font-size-medium', 'font-size-large');
+                  document.documentElement.classList.add('font-size-compact');
+                }
+              }}
+              title="Tamaño Normal / Compacto (100%)"
+              className="px-2 py-1 text-[10px] font-bold text-slate-400 hover:text-white rounded hover:bg-slate-800 transition"
+            >
+              100%
+            </button>
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('crm_font_size', 'medium');
+                  document.documentElement.classList.remove('font-size-compact', 'font-size-large');
+                  document.documentElement.classList.add('font-size-medium');
+                }
+              }}
+              title="Tamaño Medio (+12%)"
+              className="px-2 py-1 text-[10px] font-bold text-slate-400 hover:text-white rounded hover:bg-slate-800 transition"
+            >
+              112%
+            </button>
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('crm_font_size', 'large');
+                  document.documentElement.classList.remove('font-size-compact', 'font-size-medium');
+                  document.documentElement.classList.add('font-size-large');
+                }
+              }}
+              title="Tamaño Grande (+25% con compensación de espacio)"
+              className="px-2 py-1 text-[10px] font-bold text-slate-400 hover:text-white rounded hover:bg-slate-800 transition"
+            >
+              125%
+            </button>
+          </div>
+        </div>
 
         {/* Botón Cerrar Sesión */}
         <button
           onClick={handleLogout}
-          className="flex w-full items-center gap-3.5 px-4 py-3 rounded-2xl text-xs font-bold transition-all text-rose-450 hover:bg-rose-500/10 hover:text-rose-300 border border-transparent hover:border-rose-500/15 active:scale-95 cursor-pointer mt-2"
+          className="flex w-full items-center gap-3.5 px-4 py-3 rounded-2xl text-xs font-bold transition-all text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 border border-transparent hover:border-rose-500/15 active:scale-95 cursor-pointer mt-2"
           aria-label="Cerrar sesión"
         >
           <LogOut className="h-3.5 w-3.5 flex-shrink-0" />
           <span className="flex-1 text-left leading-tight">Cerrar Sesión</span>
         </button>
       </div>
+
+      {/* Modal Bloqueante de Licencia Comercial */}
+      <ActivationModal
+        isOpen={showActivationModal}
+        canClose={false}
+        onClose={() => setShowActivationModal(false)}
+        onActivated={() => {
+          setShowActivationModal(false);
+          setIsLicenseValid(true);
+          window.location.reload();
+        }}
+      />
     </aside>
   );
 }

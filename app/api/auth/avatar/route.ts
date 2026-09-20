@@ -49,6 +49,16 @@ export async function POST(request: Request) {
 
     const avatarUrl = `/uploads/avatars/${filename}`;
 
+    // Persistir avatar en Base de Datos (Supabase / SQLite) para Cloud Run
+    try {
+      const mime = file.type || (fileExt === 'png' ? 'image/png' : 'image/jpeg');
+      const dataUri = `data:${mime};base64,${buffer.toString('base64')}`;
+      await db.setSystemSetting(`media:avatars/${filename}`, dataUri);
+      await db.setSystemSetting(`media:${filename}`, dataUri);
+    } catch (e) {
+      console.warn('[auth/avatar] Warning persisting avatar in DB:', e);
+    }
+
     // Update user in DB
     await db.updateUserAvatar(payload.email, avatarUrl);
 

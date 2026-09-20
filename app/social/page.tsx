@@ -33,6 +33,10 @@ export default function SocialConnectionsPage() {
   const [instagramVerifyToken, setInstagramVerifyToken] = useState('nutraflow_instagram_token');
   const [facebookToken, setFacebookToken] = useState('');
   const [facebookVerifyToken, setFacebookVerifyToken] = useState('nutraflow_facebook_token');
+  const [igConfigured, setIgConfigured] = useState(false);
+  const [fbConfigured, setFbConfigured] = useState(false);
+  const [igMasked, setIgMasked] = useState('');
+  const [fbMasked, setFbMasked] = useState('');
 
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showGuide, setShowGuide] = useState(true);
@@ -40,13 +44,22 @@ export default function SocialConnectionsPage() {
   const fetchTokens = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/settings');
+      // Endpoint correcto con auth + máscara de secretos (el /api/settings simple solo maneja ai_enabled)
+      const res = await fetch('/api/settings/configs', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        if (data.instagram_access_token) setInstagramToken(data.instagram_access_token);
-        if (data.instagram_verify_token) setInstagramVerifyToken(data.instagram_verify_token);
-        if (data.facebook_access_token) setFacebookToken(data.facebook_access_token);
-        if (data.facebook_verify_token) setFacebookVerifyToken(data.facebook_verify_token);
+        const configs = data.configs || {};
+        const masked = data.masked || {};
+        const configured = data.configured || {};
+        if (configs.instagram_verify_token) setInstagramVerifyToken(configs.instagram_verify_token);
+        if (configs.facebook_verify_token) setFacebookVerifyToken(configs.facebook_verify_token);
+        setIgMasked(masked.instagram_access_token || '');
+        setFbMasked(masked.facebook_access_token || '');
+        setIgConfigured(!!configured.instagram_access_token);
+        setFbConfigured(!!configured.facebook_access_token);
+        // Access tokens nunca vienen en claro: input queda vacío, placeholder muestra máscara
+        setInstagramToken('');
+        setFacebookToken('');
       }
     } catch (e) {
       console.error('Error cargando tokens sociales:', e);
@@ -65,21 +78,31 @@ export default function SocialConnectionsPage() {
     setMsg(null);
 
     try {
-      const res = await fetch('/api/settings', {
+      const settings: Record<string, string> = {
+        instagram_verify_token: instagramVerifyToken.trim(),
+        facebook_verify_token: facebookVerifyToken.trim()
+      };
+      // Solo enviar access tokens si el usuario escribió uno nuevo (evita sobreescribir con vacío/máscara)
+      if (instagramToken.trim() && !instagramToken.includes('****')) {
+        settings.instagram_access_token = instagramToken.trim();
+      }
+      if (facebookToken.trim() && !facebookToken.includes('****')) {
+        settings.facebook_access_token = facebookToken.trim();
+      }
+      const res = await fetch('/api/settings/configs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instagram_access_token: instagramToken.trim(),
-          instagram_verify_token: instagramVerifyToken.trim(),
-          facebook_access_token: facebookToken.trim(),
-          facebook_verify_token: facebookVerifyToken.trim()
-        })
+        body: JSON.stringify({ settings })
       });
+      const data = await res.json().catch(() => ({}));
 
-      if (res.ok) {
+      if (res.ok && data.success !== false) {
         setMsg({ type: 'success', text: '¡Configuración de Instagram y Facebook guardada correctamente!' });
+        setInstagramToken('');
+        setFacebookToken('');
+        fetchTokens();
       } else {
-        setMsg({ type: 'error', text: 'Error al guardar la configuración' });
+        setMsg({ type: 'error', text: data.error || 'Error al guardar la configuración' });
       }
     } catch (err: any) {
       setMsg({ type: 'error', text: err.message });
@@ -191,7 +214,7 @@ export default function SocialConnectionsPage() {
                     </div>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/10 text-pink-400 border border-pink-500/20">
-                    {instagramToken ? 'Conectado' : 'Pendiente Token'}
+                    {igConfigured ? 'Conectado' : 'Pendiente Token'}
                   </span>
                 </div>
 
@@ -205,7 +228,24 @@ export default function SocialConnectionsPage() {
                       type="password"
                       value={instagramToken}
                       onChange={(e) => setInstagramToken(e.target.value)}
-                      placeholder="EAABwz..."
+                      placeholder={igMasked || 'EAABwz...'}
+                      className="w-full px-3.5 py-2.5 bg-[#14192b] border border-slate-700/60 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500 transition font-mono"
+                    />
+                    {igConfigured && !instagramToken && (
+                      <p className="text-[10px] text-emerald-400">✓ Token guardado ({igMasked}). Déjalo vacío para conservarlo, o pega uno nuevo para reemplazar.</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-pink-400" />
+                      Token de Verificación (úsalo en Meta for Developers)
+                    </label>
+                    <input
+                      type="text"
+                      value={instagramVerifyToken}
+                      onChange={(e) => setInstagramVerifyToken(e.target.value)}
+                      placeholder="nutraflow_instagram_token"
                       className="w-full px-3.5 py-2.5 bg-[#14192b] border border-slate-700/60 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500 transition font-mono"
                     />
                   </div>
@@ -248,7 +288,7 @@ export default function SocialConnectionsPage() {
                     </div>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                    {facebookToken ? 'Conectado' : 'Pendiente Token'}
+                    {fbConfigured ? 'Conectado' : 'Pendiente Token'}
                   </span>
                 </div>
 
@@ -262,7 +302,24 @@ export default function SocialConnectionsPage() {
                       type="password"
                       value={facebookToken}
                       onChange={(e) => setFacebookToken(e.target.value)}
-                      placeholder="EAABwz..."
+                      placeholder={fbMasked || 'EAABwz...'}
+                      className="w-full px-3.5 py-2.5 bg-[#14192b] border border-slate-700/60 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition font-mono"
+                    />
+                    {fbConfigured && !facebookToken && (
+                      <p className="text-[10px] text-emerald-400">✓ Token guardado ({fbMasked}). Déjalo vacío para conservarlo, o pega uno nuevo para reemplazar.</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                      Token de Verificación (úsalo en Meta for Developers)
+                    </label>
+                    <input
+                      type="text"
+                      value={facebookVerifyToken}
+                      onChange={(e) => setFacebookVerifyToken(e.target.value)}
+                      placeholder="nutraflow_facebook_token"
                       className="w-full px-3.5 py-2.5 bg-[#14192b] border border-slate-700/60 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition font-mono"
                     />
                   </div>

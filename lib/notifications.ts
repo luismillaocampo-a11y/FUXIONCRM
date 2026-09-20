@@ -94,21 +94,66 @@ ${bodyText}
  */
 export async function alertPaymentVerification(lead: { name: string; phone: string; status: string }) {
   const companyName = (await db.getSystemSetting('client_company_name')) || 'Fuxion Flow';
-  const subject = `⚠️ VERIFICACIÓN DE PAGO REQUERIDA: ${lead.name}`;
+  
+  // Formatear teléfono si viene con código de país o si es LID
+  let displayPhone = lead.phone || 'WhatsApp';
+  const cleanDigits = displayPhone.replace(/\D/g, '');
+  if (cleanDigits.length === 11 && cleanDigits.startsWith('51')) {
+    displayPhone = `+51 ${cleanDigits.slice(2, 5)} ${cleanDigits.slice(5, 8)} ${cleanDigits.slice(8)}`;
+  } else if (cleanDigits.length === 9 && cleanDigits.startsWith('9')) {
+    displayPhone = `+51 ${cleanDigits.slice(0, 3)} ${cleanDigits.slice(3, 6)} ${cleanDigits.slice(6)}`;
+  } else if (cleanDigits.length >= 14) {
+    displayPhone = `WhatsApp (LID: ${cleanDigits.slice(-6)})`;
+  } else if (displayPhone.startsWith('lead-') || !cleanDigits) {
+    displayPhone = 'WhatsApp Directo';
+  }
+
+  const subject = `⚠️ VERIFICACIÓN DE PAGO REQUERIDA: ${lead.name} (${displayPhone})`;
   const text = `
 Estimado Administrador,
 
-Un cliente ha enviado su información para verificación de pago.
+Un cliente ha enviado su comprobante de pago para verificación.
 
-Detalles del Cliente:
-- Nombre: ${lead.name}
-- Celular: ${lead.phone}
-- Estado: ${lead.status}
+📋 Detalles del Cliente:
+• Nombre: ${lead.name}
+• Celular / WhatsApp: ${displayPhone}
+• Estado: ${lead.status}
 
-Por favor, revisa el comprobante en la Bandeja de Mensajes de tu CRM y confirma la transacción.
+🔹 Por favor, revisa la captura en la Bandeja de Mensajes de tu CRM para validar la acreditación.
 
 Saludos cordiales,
 Bot Inteligente ${companyName}
+`;
+
+  return sendEmailNotification(subject, text);
+}
+
+/**
+ * Alerta específica para Venta Cerrada / Pedido Completado
+ */
+export async function alertSaleConverted(lead: { name: string; phone: string; totalAmount?: string; product?: string }) {
+  const companyName = (await db.getSystemSetting('client_company_name')) || 'NutraFlow CRM';
+  const subject = `🎉 ¡VENTA CERRADA CON ÉXITO!: ${lead.name}`;
+  const text = `
+=====================================================
+            🎉 NUEVA VENTA CONFIRMADA EN NUTRAFLOW CRM
+=====================================================
+
+¡Felicitaciones! Se ha concretado una nueva venta a través de WhatsApp.
+
+📋 DETALLES DE LA ORDEN:
+-----------------------------------------------------
+• Cliente:            ${lead.name}
+• Teléfono / WhatsApp: ${lead.phone}
+• Producto:           ${lead.product || 'Productos Fuxion'}
+• Monto / Estado:     ${lead.totalAmount || 'Venta Concretada (Converted)'}
+• Fecha y Hora:       ${new Date().toLocaleString('es-PE')}
+
+🔹 ACCIÓN RECOMENDADA:
+Ingresa al CRM para emitir la boleta/factura y programar el despacho con tu courier o motorizado.
+
+Saludos cordiales,
+Sistema Automatizado ${companyName}
 `;
 
   return sendEmailNotification(subject, text);
@@ -144,40 +189,27 @@ Bot Inteligente ${companyName}
 }
 
 /**
- * Envía un mensaje de alerta por WhatsApp al administrador
+ * Envía un mensaje de alerta por WhatsApp al administrador.
+ * Modo local: por Baileys directo; sin número de admin configurado, por email.
  */
 export async function sendWhatsAppToAdmin(message: string): Promise<void> {
-  const adminPhone = process.env.ADMIN_PHONE || process.env.WHATSAPP_ADMIN_NUMBER || '';
-  const evolutionUrl = process.env.EVOLUTION_API_URL;
-  const evolutionKey = process.env.EVOLUTION_API_KEY;
-  const evolutionInstance = process.env.EVOLUTION_API_INSTANCE;
+  const adminPhone = (process.env.ADMIN_PHONE || process.env.WHATSAPP_ADMIN_NUMBER || '').replace(/\D/g, '');
 
-  if (evolutionUrl && evolutionKey && evolutionInstance) {
+  if (adminPhone) {
     try {
-      const endpoint = `${evolutionUrl.replace(/\/$/, '')}/message/sendText/${evolutionInstance}`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': evolutionKey
-        },
-        body: JSON.stringify({ number: adminPhone, text: message })
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        console.error(`[sendWhatsAppToAdmin] Error Evolution API: ${res.status} - ${err}`);
-      } else {
-        console.log(`[sendWhatsAppToAdmin] ✅ Alerta WhatsApp enviada al admin (${adminPhone})`);
-      }
+      const { whatsappService } = await import('./whatsapp-service');
+      await whatsappService.initialize();
+      await whatsappService.sendMessageToPhone(adminPhone, message);
+      console.log(`[sendWhatsAppToAdmin] ✅ Alerta WhatsApp enviada al admin (${adminPhone})`);
+      return;
     } catch (err) {
       console.error('[sendWhatsAppToAdmin] Fallo al enviar alerta WhatsApp al admin:', err);
     }
-  } else {
-    await sendEmailNotification(
-      '🚨 NUEVO CLIENTE POR REGISTRAR - Alerta CRM',
-      message
-    );
   }
+  await sendEmailNotification(
+    '🚨 NUEVO CLIENTE POR REGISTRAR - Alerta CRM',
+    message
+  );
 }
 
 /**

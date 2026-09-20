@@ -1,0 +1,26 @@
+# Exclusiones de carga para Google Cloud Build (gcloud)
+node_modules/
+.next/
+dist/
+build/
+out/
+.git/
+.gitignore
+.agents/
+.kilo/
+.vscode/
+.idea/
+
+# Base de datos local y temporales
+db.sqlite*
+NutraFlow CRM/
+backups/
+scratch/
+license-server/
+
+# Registros y ejecutables locales
+*.log
+dev.log
+*.bat
+electron-main.js
+electron-builder.json

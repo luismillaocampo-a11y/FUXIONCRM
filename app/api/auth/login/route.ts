@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { hashPassword, signToken } from '@/lib/auth-utils';
+import { verifyPassword, signToken } from '@/lib/auth-utils';
 
 export const runtime = 'nodejs';
 
@@ -28,29 +28,28 @@ export async function POST(request: Request) {
     }
 
     // Verify password hash
-    const inputHash = hashPassword(password);
-    if (user.password !== inputHash) {
+    if (!verifyPassword(password, user.password)) {
       return NextResponse.json(
         { success: false, error: 'Correo o contraseña incorrectos.' },
         { status: 401 }
       );
     }
 
-    // Sign session token
+    // Sign session token for 10 years (315360000s)
     const token = signToken({
       userId: user.id,
       email: user.email
-    });
+    }, 315360000);
 
     console.log(`[auth/login] User logged in: ${normalizedEmail}`);
 
     const response = NextResponse.json({ success: true, message: 'Sesión iniciada correctamente.' });
 
-    // Set secure HttpOnly cookie
+    // Set secure HttpOnly cookie (10 años de sesión persistente)
     response.cookies.set('auth_token', token, {
       httpOnly: true,
       path: '/',
-      maxAge: 86400, // 24 hours
+      maxAge: 315360000, // 10 años
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production'
     });

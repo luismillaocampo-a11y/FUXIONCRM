@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Bot, ArrowRight, UserPlus, ShieldAlert, CheckCircle, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -37,16 +37,8 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        if (isRegistering) {
-          setSuccessMsg('¡Usuario registrado! Ya puedes iniciar sesión.');
-          setIsRegistering(false);
-          setName('');
-          setPassword('');
-          setConfirmPassword('');
-        } else {
-          // Login exitoso, redirección al Dashboard principal
-          window.location.href = '/';
-        }
+        // Redirección inmediata al Dashboard en cualquier caso (registro o login)
+        window.location.href = '/';
       } else {
         throw new Error(data.error || 'Ocurrió un error inesperado.');
       }
@@ -70,18 +62,20 @@ export default function LoginPage() {
           
           {/* Top-Left Chat/Bot Icon */}
           <div className="flex mb-6">
-            <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400">
-              <Bot className="h-6 w-6" />
-            </div>
+            <img 
+              src="/logo-av.png" 
+              alt="Asistente Virtual Logo" 
+              className="w-12 h-12 rounded-xl object-contain" 
+            />
           </div>
 
           {/* Header Texts */}
           <div className="mb-6 space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-white">
-              {isRegistering ? 'Crear una cuenta' : 'Welcome back'}
+              {isRegistering ? 'Crear una cuenta' : 'Bienvenido de nuevo'}
             </h1>
             <p className="text-xs text-slate-400">
-              {isRegistering ? 'Regístrate para comenzar a usar el CRM' : 'Sign in to your account'}
+              {isRegistering ? 'Regístrate para comenzar a usar el Asistente Virtual' : 'Ingresa a tu cuenta'}
             </p>
           </div>
 
@@ -112,7 +106,7 @@ export default function LoginPage() {
                     placeholder="Escribe tu nombre"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full px-4 py-3 bg-[#161922] border border-[#2a3040] rounded-xl text-xs text-slate-200 placeholder-slate-550 focus:outline-none focus:border-indigo-500 transition focus:ring-1 focus:ring-indigo-500/30"
+                    className="w-full px-4 py-3 bg-[#161922] border border-[#2a3040] rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition focus:ring-1 focus:ring-indigo-500/30"
                   />
                 </div>
               </div>
@@ -120,12 +114,12 @@ export default function LoginPage() {
 
             {/* Correo */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-300 block">Email</label>
+              <label className="text-xs font-medium text-slate-300 block">Correo Electrónico</label>
               <div className="relative">
                 <input 
                   type="email"
                   required
-                  placeholder="name@company.com"
+                  placeholder="usuario@empresa.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-3 bg-[#161922] border border-[#2a3040] rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition focus:ring-1 focus:ring-indigo-500/30"
@@ -136,14 +130,14 @@ export default function LoginPage() {
             {/* Contraseña */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
-                <label className="text-xs font-medium text-slate-300 block">Password</label>
+                <label className="text-xs font-medium text-slate-300 block">Contraseña</label>
                 {!isRegistering && (
                   <button 
                     type="button" 
                     className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition cursor-pointer"
-                    onClick={() => alert('Por favor contacta al administrador del sistema para restablecer tu contraseña.')}
+                    onClick={() => setErrorMsg('Por favor contacta al administrador del sistema para restablecer tu contraseña.')}
                   >
-                    Forgot password?
+                    ¿Olvidaste tu contraseña?
                   </button>
                 )}
               </div>
@@ -180,7 +174,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-550 text-white font-semibold rounded-xl text-xs transition-all duration-300 active:scale-[0.98] disabled:scale-100 disabled:opacity-50 cursor-pointer shadow-[0_4px_12px_rgba(99,102,241,0.2)]"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-xl text-xs transition-all duration-300 active:scale-[0.98] disabled:scale-100 disabled:opacity-50 cursor-pointer shadow-[0_4px_12px_rgba(99,102,241,0.2)]"
             >
               {loading ? (
                 <>
@@ -189,7 +183,7 @@ export default function LoginPage() {
                 </>
               ) : (
                 <>
-                  <span>{isRegistering ? 'Create account' : 'Sign in'}</span>
+                  <span>{isRegistering ? 'Crear cuenta' : 'Iniciar Sesión'}</span>
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
@@ -216,7 +210,7 @@ export default function LoginPage() {
               </span>
             ) : (
               <span>
-                Don't have an account?{' '}
+                ¿No tienes una cuenta?{' '}
                 <button
                   type="button"
                   onClick={() => {
@@ -226,7 +220,7 @@ export default function LoginPage() {
                   }}
                   className="text-indigo-400 hover:text-indigo-300 font-semibold transition cursor-pointer"
                 >
-                  Create account
+                  Crear cuenta
                 </button>
               </span>
             )}
